@@ -158,10 +158,11 @@ class RecorderViewModel : ViewModel() {
             val fi = FileInputStream(pcmPath)
             val buffer = ByteArray(size = bufferSizeInBytes)
             var count: Int
+            audioTrack.play()
+
             while (!stopPlayPcm) {
                 count = fi.read(buffer)
                 if (count > 0) {
-                    audioTrack.play()
                     val ret = audioTrack.write(buffer, 0, count)
                     if (ret == AudioTrack.ERROR_INVALID_OPERATION || ret == AudioTrack.ERROR_BAD_VALUE || ret == AudioTrack.ERROR_DEAD_OBJECT) {
                         break
