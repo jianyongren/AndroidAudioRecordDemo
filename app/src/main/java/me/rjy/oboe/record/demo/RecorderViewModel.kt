@@ -32,7 +32,7 @@ class RecorderViewModel : ViewModel() {
     private var mediaPlayer: MediaPlayer? = null
 
     private val sampleRate = 48000
-    private val channel = AudioFormat.CHANNEL_IN_MONO
+    private val channel = AudioFormat.CHANNEL_IN_STEREO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
     @Volatile
