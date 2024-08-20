@@ -32,6 +32,7 @@ class RecorderViewModel : ViewModel() {
     private var mediaPlayer: MediaPlayer? = null
 
     private val sampleRate = 48000
+//    private val channel = AudioFormat.CHANNEL_IN_MONO
     private val channel = AudioFormat.CHANNEL_IN_STEREO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
@@ -46,7 +47,7 @@ class RecorderViewModel : ViewModel() {
 
     @OptIn(DelicateCoroutinesApi::class)
     @SuppressLint("MissingPermission")
-    fun startRecord(context: Context, pcmPath: String) {
+    fun startRecord(pcmPath: String) {
         if (recordingStatus.value) {
             return
         }
@@ -56,7 +57,7 @@ class RecorderViewModel : ViewModel() {
         val bufferSizeInBytes = AudioRecord.getMinBufferSize(sampleRate, channel, audioFormat)
 
         recorder = AudioRecord(
-            if (echoCanceler.value) MediaRecorder.AudioSource.VOICE_COMMUNICATION else MediaRecorder.AudioSource.MIC,
+            if (echoCanceler.value) MediaRecorder.AudioSource.VOICE_COMMUNICATION else MediaRecorder.AudioSource.DEFAULT,
             sampleRate,
             channel,
             audioFormat,
@@ -86,7 +87,7 @@ class RecorderViewModel : ViewModel() {
                 File(pcmPath).delete()
             }
 
-            playBackgroundMusic(context = context)
+//            playBackgroundMusic(context = context)
 
             val audioBuffer = ByteBuffer.allocateDirect(bufferSizeInBytes)
             val os: OutputStream = FileOutputStream(pcmPath)
@@ -101,6 +102,10 @@ class RecorderViewModel : ViewModel() {
                         for (i in 0..<frameBytes) {
                             dos.writeByte(audioBuffer[i].toInt())
                         }
+//                        for (i in 0..<frameBytes/2 step 2) {
+//                            dos.writeByte(audioBuffer[2*i].toInt())
+//                            dos.writeByte(audioBuffer[2*i+1].toInt())
+//                        }
                     }
 
                 }

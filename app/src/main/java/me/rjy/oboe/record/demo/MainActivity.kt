@@ -118,11 +118,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun realStartRecord() {
-        viewModel.startRecord(this, getRecordFilePath())
+        viewModel.startRecord(getRecordFilePath())
     }
 
     private fun getRecordFilePath(): String {
-        return "${filesDir}/record.pcm"
+        return "${filesDir}/record_demo.pcm"
     }
 
     companion object {
