@@ -8,20 +8,24 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Button
+import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import me.rjy.oboe.record.demo.ui.theme.OboeRecordDemoTheme
 import java.io.File
@@ -33,6 +37,7 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: RecorderViewModel by viewModels<RecorderViewModel>()
 
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -41,57 +46,151 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background
                 ) {
                     Column(
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(16.dp)
                     ) {
-                        TextButton(
-                            onClick = {
-                                startRecord()
-                            },
-                            modifier = Modifier.padding(4.dp),
-                            enabled = (!viewModel.recordingStatus.value && !viewModel.pcmPlayingStatus.value)
+                        // 录音参数控制部分
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            color = MaterialTheme.colorScheme.surface
                         ) {
-                            Text(text = "开始录制", fontSize = 20.sp)
-                        }
-                        TextButton(
-                            onClick = {
-                                viewModel.stopRecord()
-                            },
-                            modifier = Modifier.padding(4.dp),
-                            enabled = (viewModel.recordingStatus.value && !viewModel.pcmPlayingStatus.value)
-                        ) {
-                            Text(text = "停止录制", fontSize = 20.sp)
-                        }
-                        TextButton(
-                            onClick = {
-                                if (viewModel.pcmPlayingStatus.value) {
-                                    viewModel.stopPcm()
-                                } else {
-                                    val pcmFile = getRecordFilePath()
-                                    if (File(pcmFile).exists()) {
-                                        viewModel.playPcm(getRecordFilePath())
-                                    } else {
-                                        Toast.makeText(
-                                            this@MainActivity,
-                                            R.string.file_not_exists,
-                                            Toast.LENGTH_SHORT
-                                        ).show()
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "录音参数设置",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                
+                                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                                
+                                // 声道设置
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "声道:", style = MaterialTheme.typography.bodyMedium)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(text = "单声道", style = MaterialTheme.typography.bodyMedium)
+                                        Switch(
+                                            checked = viewModel.isStereo.value,
+                                            onCheckedChange = {
+                                                viewModel.isStereo.value = it
+                                            }
+                                        )
+                                        Text(text = "立体声", style = MaterialTheme.typography.bodyMedium)
                                     }
                                 }
-                            },
-                            modifier = Modifier.padding(4.dp),
-                            enabled = !viewModel.recordingStatus.value
-                        ) {
-                            Text(
-                                text = if (viewModel.pcmPlayingStatus.value) "停止播放" else "播放PCM",
-                                fontSize = 20.sp
-                            )
+                                
+                                // 采样率设置
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "采样率:", style = MaterialTheme.typography.bodyMedium)
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        listOf(8000, 16000, 44100, 48000).forEach { rate ->
+                                            FilterChip(
+                                                selected = viewModel.sampleRate.value == rate,
+                                                onClick = { viewModel.sampleRate.value = rate },
+                                                label = { Text("${rate/1000}kHz") }
+                                            )
+                                        }
+                                    }
+                                }
+                                
+                                // 数据格式设置
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "数据格式:", style = MaterialTheme.typography.bodyMedium)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(text = "PCM_16BIT", style = MaterialTheme.typography.bodyMedium)
+                                        Switch(
+                                            checked = viewModel.isFloat.value,
+                                            onCheckedChange = {
+                                                viewModel.isFloat.value = it
+                                            }
+                                        )
+                                        Text(text = "PCM_FLOAT", style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                }
+                                
+                                // 回声消除设置
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "回声消除:", style = MaterialTheme.typography.bodyMedium)
+                                    Switch(
+                                        checked = viewModel.echoCanceler.value,
+                                        onCheckedChange = {
+                                            viewModel.echoCanceler.value = it
+                                        }
+                                    )
+                                }
+                            }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = "回声消除:")
-                            Checkbox(checked = viewModel.echoCanceler.value, onCheckedChange = {
-                                viewModel.echoCanceler.value = !viewModel.echoCanceler.value
-                            })
+                        
+                        // 操作按钮部分
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            color = MaterialTheme.colorScheme.surface
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                modifier = Modifier.padding(16.dp)
+                            ) {
+                                Button(
+                                    onClick = { startRecord() },
+                                    enabled = (!viewModel.recordingStatus.value && !viewModel.pcmPlayingStatus.value)
+                                ) {
+                                    Text(text = "开始录制")
+                                }
+                                
+                                Button(
+                                    onClick = { viewModel.stopRecord() },
+                                    enabled = (viewModel.recordingStatus.value && !viewModel.pcmPlayingStatus.value)
+                                ) {
+                                    Text(text = "停止录制")
+                                }
+                                
+                                Button(
+                                    onClick = {
+                                        if (viewModel.pcmPlayingStatus.value) {
+                                            viewModel.stopPcm()
+                                        } else {
+                                            val pcmFile = getRecordFilePath()
+                                            if (File(pcmFile).exists()) {
+                                                viewModel.playPcm(getRecordFilePath())
+                                            } else {
+                                                Toast.makeText(
+                                                    this@MainActivity,
+                                                    R.string.file_not_exists,
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
+                                    },
+                                    enabled = !viewModel.recordingStatus.value
+                                ) {
+                                    Text(text = if (viewModel.pcmPlayingStatus.value) "停止播放" else "播放PCM")
+                                }
+                            }
                         }
                     }
                 }

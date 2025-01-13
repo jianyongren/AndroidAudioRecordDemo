@@ -31,11 +31,6 @@ class RecorderViewModel : ViewModel() {
     private var recorder: AudioRecord? = null
     private var mediaPlayer: MediaPlayer? = null
 
-    private val sampleRate = 48000
-//    private val channel = AudioFormat.CHANNEL_IN_MONO
-    private val channel = AudioFormat.CHANNEL_IN_STEREO
-    private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-
     @Volatile
     private var stopRecord = false
 
@@ -44,6 +39,13 @@ class RecorderViewModel : ViewModel() {
     val recordingStatus = mutableStateOf(false)
     val pcmPlayingStatus = mutableStateOf(false)
     val echoCanceler = mutableStateOf(false)
+    val isStereo = mutableStateOf(true)  // true为立体声,false为单声道
+    val sampleRate = mutableStateOf(48000) // 采样率选项
+    val isFloat = mutableStateOf(false)  // true为float格式,false为short格式
+
+    private val currentSampleRate get() = sampleRate.value
+    private val currentChannel get() = if(isStereo.value) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
+    private val currentFormat get() = if(isFloat.value) AudioFormat.ENCODING_PCM_FLOAT else AudioFormat.ENCODING_PCM_16BIT
 
     @OptIn(DelicateCoroutinesApi::class)
     @SuppressLint("MissingPermission")
@@ -54,13 +56,17 @@ class RecorderViewModel : ViewModel() {
         recordingStatus.value = true
         Log.d(TAG, "startRecord")
 
-        val bufferSizeInBytes = AudioRecord.getMinBufferSize(sampleRate, channel, audioFormat)
+        val bufferSizeInBytes = AudioRecord.getMinBufferSize(
+            currentSampleRate,
+            currentChannel, 
+            currentFormat
+        )
 
         recorder = AudioRecord(
             if (echoCanceler.value) MediaRecorder.AudioSource.VOICE_COMMUNICATION else MediaRecorder.AudioSource.DEFAULT,
-            sampleRate,
-            channel,
-            audioFormat,
+            currentSampleRate,
+            currentChannel,
+            currentFormat,
             bufferSizeInBytes
         )
 
@@ -99,15 +105,22 @@ class RecorderViewModel : ViewModel() {
                     audioBuffer.clear()
                     val frameBytes = recorder?.read(audioBuffer, bufferSizeInBytes)
                     if (frameBytes != null && frameBytes > 0) {
-                        for (i in 0..<frameBytes) {
-                            dos.writeByte(audioBuffer[i].toInt())
+                        if (isFloat.value) {
+                            val floatBuffer = audioBuffer.asFloatBuffer()
+                            for (i in 0 until frameBytes / 4) {
+                                val floatValue = floatBuffer.get(i)
+                                val intBits = java.lang.Float.floatToIntBits(floatValue)
+                                dos.write((intBits shr 24).toByte().toInt())
+                                dos.write((intBits shr 16).toByte().toInt())
+                                dos.write((intBits shr 8).toByte().toInt())
+                                dos.write(intBits.toByte().toInt())
+                            }
+                        } else {
+                            for (i in 0 until frameBytes) {
+                                dos.writeByte(audioBuffer[i].toInt())
+                            }
                         }
-//                        for (i in 0..<frameBytes/2 step 2) {
-//                            dos.writeByte(audioBuffer[2*i].toInt())
-//                            dos.writeByte(audioBuffer[2*i+1].toInt())
-//                        }
                     }
-
                 }
             } catch (e: Exception) {
                 Log.e("DemoRecorder", "cache exception $e")
@@ -141,7 +154,11 @@ class RecorderViewModel : ViewModel() {
 
     fun playPcm(pcmPath: String) {
         Log.d(TAG, "playPcm $pcmPath")
-        val bufferSizeInBytes = AudioRecord.getMinBufferSize(sampleRate, channel, audioFormat)
+        val bufferSizeInBytes = AudioRecord.getMinBufferSize(
+            currentSampleRate,
+            currentChannel,
+            currentFormat
+        )
         val audioTrack = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -150,9 +167,9 @@ class RecorderViewModel : ViewModel() {
                     .build()
             ).setAudioFormat(
                 AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(getOutChannel(channel = channel))
-                    .setEncoding(audioFormat)
+                    .setSampleRate(currentSampleRate)
+                    .setChannelMask(getOutChannel(channel = currentChannel))
+                    .setEncoding(currentFormat)
                     .build()
             ).setBufferSizeInBytes(bufferSizeInBytes)
             .setTransferMode(AudioTrack.MODE_STREAM)
@@ -161,15 +178,26 @@ class RecorderViewModel : ViewModel() {
         pcmPlayingStatus.value = true
         viewModelScope.launch(newSingleThreadContext("play-pcm-thread")) {
             val fi = FileInputStream(pcmPath)
-            val buffer = ByteArray(size = bufferSizeInBytes)
+            val buffer = if (isFloat.value) {
+                ByteArray(size = bufferSizeInBytes * 2) // float格式需要更大的buffer
+            } else {
+                ByteArray(size = bufferSizeInBytes)
+            }
             var count: Int
             audioTrack.play()
 
             while (!stopPlayPcm) {
                 count = fi.read(buffer)
                 if (count > 0) {
-                    val ret = audioTrack.write(buffer, 0, count)
-                    if (ret == AudioTrack.ERROR_INVALID_OPERATION || ret == AudioTrack.ERROR_BAD_VALUE || ret == AudioTrack.ERROR_DEAD_OBJECT) {
+                    val ret = if (isFloat.value) {
+                        // float格式时需要调整写入大小
+                        audioTrack.write(buffer, 0, count, AudioTrack.WRITE_BLOCKING)
+                    } else {
+                        audioTrack.write(buffer, 0, count)
+                    }
+                    if (ret == AudioTrack.ERROR_INVALID_OPERATION || 
+                        ret == AudioTrack.ERROR_BAD_VALUE || 
+                        ret == AudioTrack.ERROR_DEAD_OBJECT) {
                         break
                     }
                 } else {
