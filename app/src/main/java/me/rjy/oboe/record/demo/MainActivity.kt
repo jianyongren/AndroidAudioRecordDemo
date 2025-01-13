@@ -1,6 +1,9 @@
 package me.rjy.oboe.record.demo
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
@@ -15,10 +18,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -189,6 +196,50 @@ class MainActivity : ComponentActivity() {
                                     enabled = !viewModel.recordingStatus.value
                                 ) {
                                     Text(text = if (viewModel.pcmPlayingStatus.value) "停止播放" else "播放PCM")
+                                }
+                            }
+                        }
+
+                        // 添加文件路径显示
+                        viewModel.recordedFilePath.value?.let { path ->
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                                color = MaterialTheme.colorScheme.surface
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "录音文件路径:",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = path,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                modifier = Modifier.padding(top = 4.dp)
+                                            )
+                                        }
+                                        IconButton(onClick = {
+                                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            val clip = ClipData.newPlainText("录音文件路径", path)
+                                            clipboard.setPrimaryClip(clip)
+                                            Toast.makeText(this@MainActivity, "路径已复制", Toast.LENGTH_SHORT).show()
+                                        }) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.ContentCopy,
+                                                contentDescription = "复制路径"
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

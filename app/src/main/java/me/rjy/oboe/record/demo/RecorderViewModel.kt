@@ -42,6 +42,7 @@ class RecorderViewModel : ViewModel() {
     val isStereo = mutableStateOf(true)  // true为立体声,false为单声道
     val sampleRate = mutableStateOf(48000) // 采样率选项
     val isFloat = mutableStateOf(false)  // true为float格式,false为short格式
+    val recordedFilePath = mutableStateOf<String?>(null)
 
     private val currentSampleRate get() = sampleRate.value
     private val currentChannel get() = if(isStereo.value) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
@@ -54,6 +55,7 @@ class RecorderViewModel : ViewModel() {
             return
         }
         recordingStatus.value = true
+        recordedFilePath.value = pcmPath
         Log.d(TAG, "startRecord")
 
         val bufferSizeInBytes = AudioRecord.getMinBufferSize(

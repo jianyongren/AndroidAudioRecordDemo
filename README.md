@@ -10,7 +10,6 @@
   - 采样率选择（8kHz/16kHz/44.1kHz/48kHz）
   - 数据格式选择（PCM_16BIT/PCM_FLOAT）
   - 回声消除开关
-- Material Design 3风格的用户界面
 - 实时录音状态显示
 - PCM格式音频文件的播放功能
 
