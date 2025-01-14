@@ -228,6 +228,13 @@ class RecorderViewModel : ViewModel() {
         }
     }
 
+    fun generateRecordFileName(): String {
+        val channelStr = if (isStereo.value) "stereo" else "mono"
+        val sampleRateStr = "${sampleRate.value/1000}kHz"
+        val formatStr = if (isFloat.value) "float" else "short"
+        return "record_${channelStr}_${sampleRateStr}_${formatStr}.pcm"
+    }
+
     companion object {
         private const val TAG = "RecorderViewModel"
     }

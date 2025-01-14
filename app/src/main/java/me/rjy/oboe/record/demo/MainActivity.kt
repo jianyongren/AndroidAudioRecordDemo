@@ -272,7 +272,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun getRecordFilePath(): String {
-        return "${filesDir}/record_demo.pcm"
+        return "${filesDir}/${viewModel.generateRecordFileName()}"
     }
 
     companion object {
