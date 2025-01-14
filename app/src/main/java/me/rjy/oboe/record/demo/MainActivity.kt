@@ -5,6 +5,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -12,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,14 +26,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -44,9 +57,34 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: RecorderViewModel by viewModels<RecorderViewModel>()
 
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+            super.onAudioDevicesAdded(addedDevices)
+            val hasSource = addedDevices?.find {
+                it.isSource
+            }
+            if (hasSource != null) {
+                viewModel.refreshAudioDevices(this@MainActivity)
+            }
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            super.onAudioDevicesRemoved(removedDevices)
+            val hasSource = removedDevices?.find {
+                it.isSource
+            }
+            if (hasSource != null) {
+                viewModel.refreshAudioDevices(this@MainActivity)
+            }
+        }
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        (getSystemService(Context.AUDIO_SERVICE) as AudioManager).registerAudioDeviceCallback(audioDeviceCallback, null)
+
         setContent {
             OboeRecordDemoTheme {
                 Surface(
@@ -75,6 +113,90 @@ class MainActivity : ComponentActivity() {
                                 )
                                 
                                 Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+                                // 录音方式设置
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "录音方式:", style = MaterialTheme.typography.bodyMedium)
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
+                                            selected = !viewModel.useOboe.value,
+                                            onClick = {
+                                                viewModel.useOboe.value = false
+//                                                viewModel.refreshAudioDevices(this@MainActivity)
+                                            }
+                                        )
+                                        Text(
+                                            text = "AudioRecord",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                        RadioButton(
+                                            selected = viewModel.useOboe.value,
+                                            onClick = {
+                                                viewModel.useOboe.value = true
+//                                                viewModel.refreshAudioDevices(this@MainActivity)
+                                            }
+                                        )
+                                        Text(
+                                            text = "Oboe",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                    }
+                                }
+
+                                // 录音设备选择
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "录音设备:", style = MaterialTheme.typography.bodyMedium)
+                                    var expanded by remember { mutableStateOf(false) }
+                                    val currentDevice = viewModel.audioDevices.value.find {
+                                        it.id == viewModel.selectedDeviceId.value
+                                    }
+                                    ExposedDropdownMenuBox(
+                                        expanded = expanded,
+                                        onExpandedChange = { expanded = it },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(start = 8.dp)
+                                    ) {
+                                        TextField(
+                                            value = currentDevice?.name ?: "",
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                                            modifier = Modifier.menuAnchor(),
+                                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                                focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                                            ),
+                                            textStyle = MaterialTheme.typography.bodyMedium
+                                        )
+                                        ExposedDropdownMenu(
+                                            expanded = expanded,
+                                            onDismissRequest = { expanded = false }
+                                        ) {
+                                            viewModel.audioDevices.value.forEach { device ->
+                                                DropdownMenuItem(
+                                                    text = { Text(device.name) },
+                                                    onClick = {
+                                                        viewModel.selectedDeviceId.value = device.id
+                                                        expanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                                 
                                 // 声道设置
                                 Row(
@@ -83,15 +205,28 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(text = "声道:", style = MaterialTheme.typography.bodyMedium)
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(text = "单声道", style = MaterialTheme.typography.bodyMedium)
-                                        Switch(
-                                            checked = viewModel.isStereo.value,
-                                            onCheckedChange = {
-                                                viewModel.isStereo.value = it
-                                            }
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
+                                            selected = !viewModel.isStereo.value,
+                                            onClick = { viewModel.isStereo.value = false }
                                         )
-                                        Text(text = "立体声", style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            text = "单声道",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.clickable { viewModel.isStereo.value = false }
+                                        )
+                                        RadioButton(
+                                            selected = viewModel.isStereo.value,
+                                            onClick = { viewModel.isStereo.value = true }
+                                        )
+                                        Text(
+                                            text = "立体声",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.clickable { viewModel.isStereo.value = true }
+                                        )
                                     }
                                 }
                                 
@@ -102,15 +237,40 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(text = "采样率:", style = MaterialTheme.typography.bodyMedium)
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    var sampleRateExpanded by remember { mutableStateOf(false) }
+                                    ExposedDropdownMenuBox(
+                                        expanded = sampleRateExpanded,
+                                        onExpandedChange = { sampleRateExpanded = it },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(start = 8.dp)
                                     ) {
-                                        listOf(8000, 16000, 44100, 48000).forEach { rate ->
-                                            FilterChip(
-                                                selected = viewModel.sampleRate.value == rate,
-                                                onClick = { viewModel.sampleRate.value = rate },
-                                                label = { Text("${rate/1000}kHz") }
-                                            )
+                                        TextField(
+                                            value = "${viewModel.sampleRate.value/1000}kHz",
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sampleRateExpanded) },
+                                            modifier = Modifier.menuAnchor(),
+                                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                                focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                                            ),
+                                            textStyle = MaterialTheme.typography.bodyMedium
+                                        )
+                                        ExposedDropdownMenu(
+                                            expanded = sampleRateExpanded,
+                                            onDismissRequest = { sampleRateExpanded = false }
+                                        ) {
+                                            listOf(8000, 16000, 44100, 48000).forEach { rate ->
+                                                DropdownMenuItem(
+                                                    text = { Text("${rate/1000}kHz") },
+                                                    onClick = {
+                                                        viewModel.sampleRate.value = rate
+                                                        sampleRateExpanded = false
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -122,15 +282,28 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(text = "数据格式:", style = MaterialTheme.typography.bodyMedium)
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(text = "PCM_16BIT", style = MaterialTheme.typography.bodyMedium)
-                                        Switch(
-                                            checked = viewModel.isFloat.value,
-                                            onCheckedChange = {
-                                                viewModel.isFloat.value = it
-                                            }
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
+                                            selected = !viewModel.isFloat.value,
+                                            onClick = { viewModel.isFloat.value = false }
                                         )
-                                        Text(text = "PCM_FLOAT", style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            text = "16BIT",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.clickable { viewModel.isFloat.value = false }
+                                        )
+                                        RadioButton(
+                                            selected = viewModel.isFloat.value,
+                                            onClick = { viewModel.isFloat.value = true }
+                                        )
+                                        Text(
+                                            text = "FLOAT",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.clickable { viewModel.isFloat.value = true }
+                                        )
                                     }
                                 }
                                 
@@ -147,6 +320,11 @@ class MainActivity : ComponentActivity() {
                                             viewModel.echoCanceler.value = it
                                         }
                                     )
+                                }
+
+                                // 观察useOboe的值变化
+                                LaunchedEffect(viewModel.useOboe.value) {
+                                    viewModel.refreshAudioDevices(this@MainActivity)
                                 }
                             }
                         }
@@ -247,6 +425,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        (getSystemService(Context.AUDIO_SERVICE) as AudioManager).unregisterAudioDeviceCallback(audioDeviceCallback)
     }
 
     private val requestPermissionLauncher =
