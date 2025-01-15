@@ -111,7 +111,7 @@ private:
 static std::unique_ptr<OboeRecorder> gRecorder;
 
 extern "C"
-JNIEXPORT void JNICALL
+JNIEXPORT jboolean JNICALL
 Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1start_1record(
     JNIEnv *env, 
     jobject thiz,
@@ -127,9 +127,10 @@ Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1start_1record(
         str, sampleRate, isStereo, isFloat, deviceId, audioSource);
     
     gRecorder = std::make_unique<OboeRecorder>(str, sampleRate, isStereo, isFloat, deviceId, audioSource);
-    gRecorder->start();
+    bool success = gRecorder->start();
     
     env->ReleaseStringUTFChars(path, str);
+    return success;
 }
 
 extern "C"

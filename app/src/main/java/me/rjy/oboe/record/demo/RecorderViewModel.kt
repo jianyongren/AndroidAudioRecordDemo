@@ -81,7 +81,67 @@ class RecorderViewModel : ViewModel() {
     private val currentFormat get() = if(isFloat.value) AudioFormat.ENCODING_PCM_FLOAT else AudioFormat.ENCODING_PCM_16BIT
 
     init {
+        // 加载保存的设置
+        loadSettings(App.context)
         refreshAudioDevices(App.context)
+    }
+
+    private fun loadSettings(context: Context) {
+        val settings = PreferenceManager.loadSettings(context)
+        useOboe.value = settings.useOboe
+        isStereo.value = settings.isStereo
+        sampleRate.value = settings.sampleRate
+        isFloat.value = settings.isFloat
+        echoCanceler.value = settings.echoCanceler
+        selectedAudioSource.value = settings.audioSource
+    }
+
+    private fun saveSettings(context: Context) {
+        val settings = RecorderSettings(
+            useOboe = useOboe.value,
+            isStereo = isStereo.value,
+            sampleRate = sampleRate.value,
+            isFloat = isFloat.value,
+            echoCanceler = echoCanceler.value,
+            audioSource = selectedAudioSource.value
+        )
+        PreferenceManager.saveSettings(context, settings)
+    }
+
+    // 在参数变化时保存设置
+    private fun onSettingsChanged() {
+        saveSettings(App.context)
+    }
+
+    // 修改现有的状态设置方法，添加保存功能
+    fun setUseOboe(value: Boolean) {
+        useOboe.value = value
+        onSettingsChanged()
+    }
+
+    fun setIsStereo(value: Boolean) {
+        isStereo.value = value
+        onSettingsChanged()
+    }
+
+    fun setSampleRate(value: Int) {
+        sampleRate.value = value
+        onSettingsChanged()
+    }
+
+    fun setIsFloat(value: Boolean) {
+        isFloat.value = value
+        onSettingsChanged()
+    }
+
+    fun setEchoCanceler(value: Boolean) {
+        echoCanceler.value = value
+        onSettingsChanged()
+    }
+
+    fun setAudioSource(value: Int) {
+        selectedAudioSource.value = value
+        onSettingsChanged()
     }
 
     fun refreshAudioDevices(context: Context) {
@@ -208,7 +268,7 @@ class RecorderViewModel : ViewModel() {
                     }
                 }
             } catch (e: Exception) {
-                Log.e("DemoRecorder", "cache exception $e")
+                Log.e(TAG, "cache exception $e")
                 e.printStackTrace()
             } finally {
                 dos.flush()
@@ -229,14 +289,14 @@ class RecorderViewModel : ViewModel() {
         isFloat: Boolean,
         deviceId: Int,
         audioSource: Int
-    )
+    ): Boolean
     private external fun native_stop_record()
 
     private fun startOboeRecord(pcmPath: String) {
         stopRecord = false
         viewModelScope.launch(newSingleThreadContext("oboe-record-thread")) {
             try {
-                native_start_record(
+                val ret = native_start_record(
                     pcmPath,
                     currentSampleRate,
                     isStereo.value,
@@ -244,9 +304,11 @@ class RecorderViewModel : ViewModel() {
                     selectedDeviceId.value,
                     selectedAudioSource.value
                 )
+                if (!ret) {
+                    recordingStatus.value = false
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Oboe record failed", e)
-            } finally {
                 recordingStatus.value = false
             }
         }
@@ -256,6 +318,7 @@ class RecorderViewModel : ViewModel() {
         stopRecord = true
         if (useOboe.value) {
             native_stop_record()
+            recordingStatus.value = false
         }
     }
 
