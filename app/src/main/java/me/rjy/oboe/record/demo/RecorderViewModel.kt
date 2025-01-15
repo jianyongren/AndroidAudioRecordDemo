@@ -45,6 +45,26 @@ class RecorderViewModel : ViewModel() {
     val sampleRate = mutableStateOf(48000) // 采样率选项
     val isFloat = mutableStateOf(false)  // true为float格式,false为short格式
     val useOboe = mutableStateOf(false)  // true使用oboe,false使用AudioRecord
+    val selectedAudioSource = mutableStateOf(MediaRecorder.AudioSource.DEFAULT) // 选中的音频源
+
+    // 音频源列表
+    data class AudioSourceInfo(
+        val id: Int,
+        val name: String
+    )
+
+    val audioSources = mutableListOf(
+        AudioSourceInfo(MediaRecorder.AudioSource.DEFAULT, "默认"),
+        AudioSourceInfo(MediaRecorder.AudioSource.MIC, "麦克风"),
+        AudioSourceInfo(MediaRecorder.AudioSource.VOICE_COMMUNICATION, "语音通话"),
+        AudioSourceInfo(MediaRecorder.AudioSource.VOICE_RECOGNITION, "语音识别"),
+        AudioSourceInfo(MediaRecorder.AudioSource.CAMCORDER, "摄像机"),
+        AudioSourceInfo(MediaRecorder.AudioSource.UNPROCESSED, "未处理")
+    ).apply {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            add(AudioSourceInfo(MediaRecorder.AudioSource.VOICE_PERFORMANCE, "演出"))
+        }
+    }
 
     val recordedFilePath = mutableStateOf<String?>(null)
     val selectedDeviceId = mutableStateOf(0) // 选中的录音设备ID
@@ -134,13 +154,17 @@ class RecorderViewModel : ViewModel() {
             currentFormat
         )
 
-        recorder = AudioRecord(
-            if (echoCanceler.value) MediaRecorder.AudioSource.VOICE_COMMUNICATION else MediaRecorder.AudioSource.DEFAULT,
-            currentSampleRate,
-            currentChannel,
-            currentFormat,
-            bufferSizeInBytes
-        )
+        recorder = AudioRecord.Builder()
+            .setAudioSource(selectedAudioSource.value)
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setSampleRate(currentSampleRate)
+                    .setChannelMask(currentChannel)
+                    .setEncoding(currentFormat)
+                    .build()
+            )
+            .setBufferSizeInBytes(bufferSizeInBytes)
+            .build()
 
         if (recorder?.state != AudioRecord.STATE_INITIALIZED) {
             Log.e("DemoRecorder", "AudioRecord init failed")
@@ -203,7 +227,8 @@ class RecorderViewModel : ViewModel() {
         sampleRate: Int,
         isStereo: Boolean,
         isFloat: Boolean,
-        deviceId: Int
+        deviceId: Int,
+        audioSource: Int
     )
     private external fun native_stop_record()
 
@@ -216,7 +241,8 @@ class RecorderViewModel : ViewModel() {
                     currentSampleRate,
                     isStereo.value,
                     isFloat.value,
-                    selectedDeviceId.value
+                    selectedDeviceId.value,
+                    selectedAudioSource.value
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Oboe record failed", e)

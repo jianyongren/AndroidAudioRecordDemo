@@ -122,31 +122,86 @@ class MainActivity : ComponentActivity() {
                                 ) {
                                     Text(text = "录音方式:", style = MaterialTheme.typography.bodyMedium)
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        horizontalArrangement = Arrangement.Start,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(start = 8.dp)
                                     ) {
-                                        RadioButton(
-                                            selected = !viewModel.useOboe.value,
-                                            onClick = {
-                                                viewModel.useOboe.value = false
-//                                                viewModel.refreshAudioDevices(this@MainActivity)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            RadioButton(
+                                                selected = !viewModel.useOboe.value,
+                                                onClick = { viewModel.useOboe.value = false }
+                                            )
+                                            Text(
+                                                text = "AudioRecord",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                modifier = Modifier.clickable { viewModel.useOboe.value = false }
+                                            )
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            RadioButton(
+                                                selected = viewModel.useOboe.value,
+                                                onClick = { viewModel.useOboe.value = true }
+                                            )
+                                            Text(
+                                                text = "Oboe",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                modifier = Modifier.clickable { viewModel.useOboe.value = true }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 音频源选择（仅AudioRecord模式下显示）
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "音频源:", style = MaterialTheme.typography.bodyMedium)
+                                    var audioSourceExpanded by remember { mutableStateOf(false) }
+                                    val currentSource = viewModel.audioSources.find {
+                                        it.id == viewModel.selectedAudioSource.value
+                                    }
+                                    ExposedDropdownMenuBox(
+                                        expanded = audioSourceExpanded,
+                                        onExpandedChange = { audioSourceExpanded = it },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(start = 8.dp)
+                                    ) {
+                                        TextField(
+                                            value = currentSource?.name ?: "",
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = audioSourceExpanded) },
+                                            modifier = Modifier.menuAnchor(),
+                                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                                focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                                            ),
+                                            textStyle = MaterialTheme.typography.bodyMedium
+                                        )
+                                        ExposedDropdownMenu(
+                                            expanded = audioSourceExpanded,
+                                            onDismissRequest = { audioSourceExpanded = false }
+                                        ) {
+                                            viewModel.audioSources.forEach { source ->
+                                                DropdownMenuItem(
+                                                    text = { Text(source.name) },
+                                                    onClick = {
+                                                        viewModel.selectedAudioSource.value = source.id
+                                                        audioSourceExpanded = false
+                                                    }
+                                                )
                                             }
-                                        )
-                                        Text(
-                                            text = "AudioRecord",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                        )
-                                        RadioButton(
-                                            selected = viewModel.useOboe.value,
-                                            onClick = {
-                                                viewModel.useOboe.value = true
-//                                                viewModel.refreshAudioDevices(this@MainActivity)
-                                            }
-                                        )
-                                        Text(
-                                            text = "Oboe",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                        )
+                                        }
                                     }
                                 }
 
@@ -206,27 +261,38 @@ class MainActivity : ComponentActivity() {
                                 ) {
                                     Text(text = "声道:", style = MaterialTheme.typography.bodyMedium)
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        horizontalArrangement = Arrangement.Start,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(start = 8.dp)
                                     ) {
-                                        RadioButton(
-                                            selected = !viewModel.isStereo.value,
-                                            onClick = { viewModel.isStereo.value = false }
-                                        )
-                                        Text(
-                                            text = "单声道",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            modifier = Modifier.clickable { viewModel.isStereo.value = false }
-                                        )
-                                        RadioButton(
-                                            selected = viewModel.isStereo.value,
-                                            onClick = { viewModel.isStereo.value = true }
-                                        )
-                                        Text(
-                                            text = "立体声",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            modifier = Modifier.clickable { viewModel.isStereo.value = true }
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            RadioButton(
+                                                selected = !viewModel.isStereo.value,
+                                                onClick = { viewModel.isStereo.value = false }
+                                            )
+                                            Text(
+                                                text = "单声道",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                modifier = Modifier.clickable { viewModel.isStereo.value = false }
+                                            )
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            RadioButton(
+                                                selected = viewModel.isStereo.value,
+                                                onClick = { viewModel.isStereo.value = true }
+                                            )
+                                            Text(
+                                                text = "立体声",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                modifier = Modifier.clickable { viewModel.isStereo.value = true }
+                                            )
+                                        }
                                     }
                                 }
                                 
@@ -283,27 +349,38 @@ class MainActivity : ComponentActivity() {
                                 ) {
                                     Text(text = "数据格式:", style = MaterialTheme.typography.bodyMedium)
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        horizontalArrangement = Arrangement.Start,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(start = 8.dp)
                                     ) {
-                                        RadioButton(
-                                            selected = !viewModel.isFloat.value,
-                                            onClick = { viewModel.isFloat.value = false }
-                                        )
-                                        Text(
-                                            text = "16BIT",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            modifier = Modifier.clickable { viewModel.isFloat.value = false }
-                                        )
-                                        RadioButton(
-                                            selected = viewModel.isFloat.value,
-                                            onClick = { viewModel.isFloat.value = true }
-                                        )
-                                        Text(
-                                            text = "FLOAT",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            modifier = Modifier.clickable { viewModel.isFloat.value = true }
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            RadioButton(
+                                                selected = !viewModel.isFloat.value,
+                                                onClick = { viewModel.isFloat.value = false }
+                                            )
+                                            Text(
+                                                text = "16BIT",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                modifier = Modifier.clickable { viewModel.isFloat.value = false }
+                                            )
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            RadioButton(
+                                                selected = viewModel.isFloat.value,
+                                                onClick = { viewModel.isFloat.value = true }
+                                            )
+                                            Text(
+                                                text = "FLOAT",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                modifier = Modifier.clickable { viewModel.isFloat.value = true }
+                                            )
+                                        }
                                     }
                                 }
                                 
@@ -314,12 +391,20 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(text = "回声消除:", style = MaterialTheme.typography.bodyMedium)
-                                    Switch(
-                                        checked = viewModel.echoCanceler.value,
-                                        onCheckedChange = {
-                                            viewModel.echoCanceler.value = it
-                                        }
-                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.Start,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(start = 8.dp)
+                                    ) {
+                                        Switch(
+                                            checked = viewModel.echoCanceler.value,
+                                            onCheckedChange = {
+                                                viewModel.echoCanceler.value = it
+                                            }
+                                        )
+                                    }
                                 }
 
                                 // 观察useOboe的值变化

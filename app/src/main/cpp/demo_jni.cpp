@@ -9,12 +9,34 @@
 
 class OboeRecorder: public oboe::AudioStreamCallback {
 public:
-    explicit OboeRecorder(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, int32_t deviceId = oboe::kUnspecified) 
+    explicit OboeRecorder(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, int32_t deviceId, int32_t audioSource) 
         : mFilePath(filePath), mShouldRecord(false), 
           mSampleRate(sampleRate), 
           mChannelCount(isStereo ? oboe::ChannelCount::Stereo : oboe::ChannelCount::Mono),
           mFormat(isFloat ? oboe::AudioFormat::Float : oboe::AudioFormat::I16),
-          mDeviceId(deviceId) {}
+          mDeviceId(deviceId),
+          mAudioSource(audioSource) {}
+
+    oboe::InputPreset getInputPreset(int32_t audioSource) {
+        switch (audioSource) {
+            case 0: // MediaRecorder.AudioSource.DEFAULT
+                return oboe::InputPreset::Generic;
+            case 1: // MediaRecorder.AudioSource.MIC
+                return oboe::InputPreset::Generic;
+            case 7: // MediaRecorder.AudioSource.VOICE_COMMUNICATION
+                return oboe::InputPreset::VoiceCommunication;
+            case 6: // MediaRecorder.AudioSource.VOICE_RECOGNITION
+                return oboe::InputPreset::VoiceRecognition;
+            case 5: // MediaRecorder.AudioSource.CAMCORDER
+                return oboe::InputPreset::Camcorder;
+            case 9: // MediaRecorder.AudioSource.UNPROCESSED
+                return oboe::InputPreset::Unprocessed;
+            case 10: // MediaRecorder.AudioSource.VOICE_PERFORMANCE
+                return oboe::InputPreset::VoicePerformance;
+            default:
+                return oboe::InputPreset::Generic;
+        }
+    }
 
     bool start() {
         oboe::AudioStreamBuilder builder;
@@ -25,6 +47,7 @@ public:
             ->setChannelCount(mChannelCount)
             ->setSampleRate(mSampleRate)
             ->setDeviceId(mDeviceId)
+            ->setInputPreset(getInputPreset(mAudioSource))
             ->setCallback(this);
 
         oboe::Result result = builder.openStream(mStream);
@@ -82,6 +105,7 @@ private:
     int32_t mChannelCount;
     oboe::AudioFormat mFormat;
     int32_t mDeviceId;
+    int32_t mAudioSource;
 };
 
 static std::unique_ptr<OboeRecorder> gRecorder;
@@ -95,13 +119,14 @@ Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1start_1record(
     jint sampleRate,
     jboolean isStereo,
     jboolean isFloat,
-    jint deviceId
+    jint deviceId,
+    jint audioSource
 ) {
     const char *str = env->GetStringUTFChars(path, nullptr);
-    LOG("start record... %s, sampleRate: %d, isStereo: %d, isFloat: %d, deviceId: %d", 
-        str, sampleRate, isStereo, isFloat, deviceId);
+    LOG("start record... %s, sampleRate: %d, isStereo: %d, isFloat: %d, deviceId: %d, audioSource: %d", 
+        str, sampleRate, isStereo, isFloat, deviceId, audioSource);
     
-    gRecorder = std::make_unique<OboeRecorder>(str, sampleRate, isStereo, isFloat, deviceId);
+    gRecorder = std::make_unique<OboeRecorder>(str, sampleRate, isStereo, isFloat, deviceId, audioSource);
     gRecorder->start();
     
     env->ReleaseStringUTFChars(path, str);
