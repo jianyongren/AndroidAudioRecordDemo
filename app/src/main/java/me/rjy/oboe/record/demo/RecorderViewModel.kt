@@ -26,6 +26,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.concurrent.Volatile
 
 
@@ -252,14 +253,12 @@ class RecorderViewModel : ViewModel() {
                     if (frameBytes != null && frameBytes > 0) {
                         if (isFloat.value) {
                             val floatBuffer = audioBuffer.asFloatBuffer()
-                            for (i in 0 until frameBytes / 4) {
-                                val floatValue = floatBuffer.get(i)
-                                val intBits = java.lang.Float.floatToIntBits(floatValue)
-                                dos.write((intBits shr 24).toByte().toInt())
-                                dos.write((intBits shr 16).toByte().toInt())
-                                dos.write((intBits shr 8).toByte().toInt())
-                                dos.write(intBits.toByte().toInt())
-                            }
+                            val floatArray = FloatArray(frameBytes / 4)
+                            floatBuffer.get(floatArray)
+                            // 直接写入float数据的字节
+                            val byteBuffer = ByteBuffer.allocate(frameBytes)
+                            byteBuffer.asFloatBuffer().put(floatArray)
+                            dos.write(byteBuffer.array())
                         } else {
                             for (i in 0 until frameBytes) {
                                 dos.writeByte(audioBuffer[i].toInt())
@@ -335,12 +334,19 @@ class RecorderViewModel : ViewModel() {
 
     fun playPcm(pcmPath: String) {
         Log.d(TAG, "playPcm $pcmPath")
+        // 设置系统音量为80%
+//        val audioManager = App.context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+//        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+//        val targetVolume = (maxVolume * 0.8).toInt()
+//        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0)
+//        Log.d(TAG, "max volume $maxVolume, set volume $targetVolume")
+
         val bufferSizeInBytes = AudioRecord.getMinBufferSize(
             currentSampleRate,
             currentChannel,
             currentFormat
         )
-        val audioTrack = AudioTrack.Builder()
+        val audioTrackBuilder = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -352,33 +358,43 @@ class RecorderViewModel : ViewModel() {
                     .setChannelMask(getOutChannel(channel = currentChannel))
                     .setEncoding(currentFormat)
                     .build()
-            ).setBufferSizeInBytes(bufferSizeInBytes)
+            ).setBufferSizeInBytes(bufferSizeInBytes * 4)
             .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioTrackBuilder.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+        }
+        val audioTrack = audioTrackBuilder.build()
         stopPlayPcm = false
         pcmPlayingStatus.value = true
         viewModelScope.launch(newSingleThreadContext("play-pcm-thread")) {
             val fi = FileInputStream(pcmPath)
             val buffer = if (isFloat.value) {
-                ByteArray(size = bufferSizeInBytes * 2) // float格式需要更大的buffer
+                ByteArray(size = bufferSizeInBytes)
             } else {
                 ByteArray(size = bufferSizeInBytes)
             }
             var count: Int
+//            audioTrack.setVolume(1f)
             audioTrack.play()
 
             while (!stopPlayPcm) {
                 count = fi.read(buffer)
+//                Log.d(TAG, "play pcm read: $count")
                 if (count > 0) {
                     val ret = if (isFloat.value) {
-                        // float格式时需要调整写入大小
-                        audioTrack.write(buffer, 0, count, AudioTrack.WRITE_BLOCKING)
+                        // 对float格式的数据进行处理
+                        val byteBuffer = ByteBuffer.wrap(buffer, 0, count).order(ByteOrder.LITTLE_ENDIAN)
+                        val floatBuffer = byteBuffer.asFloatBuffer()
+                        val floatArray = FloatArray(count / 4)
+                        floatBuffer.get(floatArray)
+                        audioTrack.write(floatArray, 0, floatArray.size, AudioTrack.WRITE_BLOCKING)
                     } else {
                         audioTrack.write(buffer, 0, count)
                     }
                     if (ret == AudioTrack.ERROR_INVALID_OPERATION || 
                         ret == AudioTrack.ERROR_BAD_VALUE || 
                         ret == AudioTrack.ERROR_DEAD_OBJECT) {
+                        Log.e(TAG, "AudioTrack write error: $ret")
                         break
                     }
                 } else {
