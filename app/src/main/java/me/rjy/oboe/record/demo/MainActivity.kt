@@ -194,17 +194,16 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(16.dp)
                             ) {
                                 Button(
-                                    onClick = { startRecord() },
-                                    enabled = (!viewModel.recordingStatus.value && !viewModel.pcmPlayingStatus.value)
+                                    onClick = { 
+                                        if (viewModel.recordingStatus.value) {
+                                            viewModel.stopRecord()
+                                        } else {
+                                            startRecord()
+                                        }
+                                    },
+                                    enabled = !viewModel.pcmPlayingStatus.value
                                 ) {
-                                    Text(text = "开始录制")
-                                }
-                                
-                                Button(
-                                    onClick = { viewModel.stopRecord() },
-                                    enabled = (viewModel.recordingStatus.value && !viewModel.pcmPlayingStatus.value)
-                                ) {
-                                    Text(text = "停止录制")
+                                    Text(text = if (viewModel.recordingStatus.value) "停止录制" else "开始录制")
                                 }
                                 
                                 Button(
