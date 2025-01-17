@@ -199,16 +199,55 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                // 波形图
-                                WaveformView(
-                                    waveformData = viewModel.waveformData.value,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(200.dp),
-                                    onMaxPointsCalculated = { points ->
-                                        viewModel.setMaxWaveformPoints(points)
+                                if (viewModel.isStereo.value) {
+                                    // 立体声模式：显示两个波形图
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        // 左声道波形
+                                        Text(
+                                            text = "左声道",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        WaveformView(
+                                            waveformData = viewModel.leftChannelData.value,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(96.dp),
+                                            onMaxPointsCalculated = { points ->
+                                                viewModel.setMaxWaveformPoints(points)
+                                            }
+                                        )
+
+                                        // 右声道波形
+                                        Text(
+                                            text = "右声道",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        WaveformView(
+                                            waveformData = viewModel.rightChannelData.value,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(96.dp),
+                                            onMaxPointsCalculated = { points ->
+                                                viewModel.setMaxWaveformPoints(points)
+                                            }
+                                        )
                                     }
-                                )
+                                } else {
+                                    // 单声道模式：显示一个波形图
+                                    WaveformView(
+                                        waveformData = viewModel.leftChannelData.value,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(200.dp),
+                                        onMaxPointsCalculated = { points ->
+                                            viewModel.setMaxWaveformPoints(points)
+                                        }
+                                    )
+                                }
 
                                 // 按钮
                                 Row(

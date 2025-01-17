@@ -52,9 +52,12 @@ class RecorderViewModel : ViewModel() {
     val useOboe = mutableStateOf(false)  // true使用oboe,false使用AudioRecord
     val selectedAudioSource = mutableIntStateOf(MediaRecorder.AudioSource.DEFAULT) // 选中的音频源
 
-    // 波形数据，最多保存150个采样点
-    private val _waveformData = mutableStateOf<List<Float>>(emptyList())
-    val waveformData: State<List<Float>> = _waveformData
+    // 波形数据
+    private val _leftChannelData = mutableStateOf<List<Float>>(emptyList())
+    val leftChannelData: State<List<Float>> = _leftChannelData
+
+    private val _rightChannelData = mutableStateOf<List<Float>>(emptyList())
+    val rightChannelData: State<List<Float>> = _rightChannelData
 
     // 波形数据的最大采样点数，由View的宽度决定
     private var maxWaveformPoints = 150
@@ -65,36 +68,136 @@ class RecorderViewModel : ViewModel() {
     }
 
     // 计算一组采样的振幅
-    private fun calculateAmplitude(buffer: ByteBuffer, size: Int): Float {
-        var sum = 0.0f
-        val count = size / if (isStereo.value) 2 else 1
+    private fun calculateAmplitude(buffer: ByteBuffer, size: Int): Pair<Float, Float?> {
+        buffer.order(ByteOrder.LITTLE_ENDIAN)  // 确保字节序正确
         
         if (isFloat.value) {
             val floatBuffer = buffer.asFloatBuffer()
-            for (i in 0 until count) {
-                sum += abs(floatBuffer.get(i))
+            val numSamples = size / 4  // float类型每个采样4字节
+            
+            if (isStereo.value) {
+                var maxLeftAbsAmplitude = 0.0
+                var maxRightAbsAmplitude = 0.0
+                var maxLeftAmplitude = 0.0
+                var maxRightAmplitude = 0.0
+                
+                // 分别计算左右声道的最大振幅
+                val samplesPerChannel = numSamples / 2  // 双声道时每个声道的采样点数
+                for (i in 0 until samplesPerChannel) {
+                    val leftSample = floatBuffer.get(i * 2)
+                    val rightSample = floatBuffer.get(i * 2 + 1)
+                    
+                    val leftAbs = abs(leftSample.toDouble())
+                    if (leftAbs > maxLeftAbsAmplitude) {
+                        maxLeftAbsAmplitude = leftAbs
+                        maxLeftAmplitude = leftSample.toDouble()
+                    }
+                    
+                    val rightAbs = abs(rightSample.toDouble())
+                    if (rightAbs > maxRightAbsAmplitude) {
+                        maxRightAbsAmplitude = rightAbs
+                        maxRightAmplitude = rightSample.toDouble()
+                    }
+                }
+                
+                return Pair(
+                    maxLeftAmplitude.coerceIn(-1.0, 1.0).toFloat(),
+                    maxRightAmplitude.coerceIn(-1.0, 1.0).toFloat()
+                )
+            } else {
+                var maxAbsAmplitude = 0.0
+                var maxAmplitude = 0.0
+                
+                for (i in 0 until numSamples) {
+                    val sample = floatBuffer.get(i)
+                    val absValue = abs(sample.toDouble())
+                    if (absValue > maxAbsAmplitude) {
+                        maxAbsAmplitude = absValue
+                        maxAmplitude = sample.toDouble()
+                    }
+                }
+                
+                return Pair(
+                    maxAmplitude.coerceIn(-1.0, 1.0).toFloat(),
+                    null
+                )
             }
         } else {
             val shortBuffer = buffer.asShortBuffer()
-            for (i in 0 until count) {
-                sum += abs(shortBuffer.get(i) / 32768.0f)
+            val numSamples = size / 2  // short类型每个采样2字节
+            
+            if (isStereo.value) {
+                var maxLeftAbsAmplitude = 0.0
+                var maxRightAbsAmplitude = 0.0
+                var maxLeftAmplitude = 0.0
+                var maxRightAmplitude = 0.0
+                
+                // 分别计算左右声道的最大振幅
+                val samplesPerChannel = numSamples / 2  // 双声道时每个声道的采样点数
+                for (i in 0 until samplesPerChannel) {
+                    val leftSample = shortBuffer.get(i * 2) / 32768.0
+                    val rightSample = shortBuffer.get(i * 2 + 1) / 32768.0
+                    
+                    val leftAbs = abs(leftSample)
+                    if (leftAbs > maxLeftAbsAmplitude) {
+                        maxLeftAbsAmplitude = leftAbs
+                        maxLeftAmplitude = leftSample
+                    }
+                    
+                    val rightAbs = abs(rightSample)
+                    if (rightAbs > maxRightAbsAmplitude) {
+                        maxRightAbsAmplitude = rightAbs
+                        maxRightAmplitude = rightSample
+                    }
+                }
+                
+                return Pair(
+                    maxLeftAmplitude.coerceIn(-1.0, 1.0).toFloat(),
+                    maxRightAmplitude.coerceIn(-1.0, 1.0).toFloat()
+                )
+            } else {
+                var maxAbsAmplitude = 0.0
+                var maxAmplitude = 0.0
+                
+                for (i in 0 until numSamples) {
+                    val sample = shortBuffer.get(i) / 32768.0
+                    val absValue = abs(sample)
+                    if (absValue > maxAbsAmplitude) {
+                        maxAbsAmplitude = absValue
+                        maxAmplitude = sample
+                    }
+                }
+                
+                return Pair(
+                    maxAmplitude.coerceIn(-1.0, 1.0).toFloat(),
+                    null
+                )
             }
         }
-        
-        return sum / count
     }
 
     // 更新波形数据
-    private fun updateWaveform(amplitude: Float) {
-        Log.d(TAG, "updateWaveform called: amplitude=$amplitude")
+    private fun updateWaveform(leftAmplitude: Float, rightAmplitude: Float? = null) {
         viewModelScope.launch(Dispatchers.Main) {
-            val currentData = _waveformData.value.toMutableList()
-            currentData.add(0, amplitude)  // 在列表开头添加新数据
-            if (currentData.size > maxWaveformPoints) {
-                currentData.removeAt(currentData.size - 1)  // 移除最后一个数据点
+            val currentLeft = _leftChannelData.value.toMutableList()
+            val currentRight = _rightChannelData.value.toMutableList()
+
+            // 添加新数据到开头
+            currentLeft.add(0, leftAmplitude)
+            if (rightAmplitude != null) {
+                currentRight.add(0, rightAmplitude)
             }
-            _waveformData.value = currentData
-            Log.d(TAG, "Waveform updated: size=${currentData.size}, amplitude=$amplitude")
+
+            // 移除超出最大点数的数据
+            if (currentLeft.size > maxWaveformPoints) {
+                currentLeft.removeAt(currentLeft.size - 1)
+            }
+            if (currentRight.size > maxWaveformPoints) {
+                currentRight.removeAt(currentRight.size - 1)
+            }
+
+            _leftChannelData.value = currentLeft
+            _rightChannelData.value = currentRight
         }
     }
 
@@ -265,7 +368,8 @@ class RecorderViewModel : ViewModel() {
             return
         }
         // 只在开始录音时重置波形数据
-        _waveformData.value = emptyList()
+        _leftChannelData.value = emptyList()
+        _rightChannelData.value = emptyList()
         recordingStatus.value = true
         recordedFilePath.value = pcmPath
         Log.d(TAG, "startRecord")
@@ -302,7 +406,8 @@ class RecorderViewModel : ViewModel() {
             Log.e(TAG, "AudioRecord init failed")
             recordingStatus.value = false
             // 初始化失败时清空波形数据
-            _waveformData.value = emptyList()
+            _leftChannelData.value = emptyList()
+            _rightChannelData.value = emptyList()
             return
         }
         stopRecord = false
@@ -329,7 +434,6 @@ class RecorderViewModel : ViewModel() {
                     audioBuffer.clear()
                     val frameBytes = recorder?.read(audioBuffer, bufferSizeInBytes)
                     if (frameBytes != null && frameBytes > 0) {
-//                        Log.d(TAG, "read: ${frameBytes / (if (isFloat.value) 4.0 else 2.0) / currentSampleRate}")
                         // 写入文件
                         if (isFloat.value) {
                             val floatBuffer = audioBuffer.asFloatBuffer()
@@ -353,37 +457,21 @@ class RecorderViewModel : ViewModel() {
 
                         // 每收集到足够的样本就更新一次波形
                         if (accumulatedSamples >= samplesPerUpdate) {
-                            // 计算这一帧数据中的最大振幅值
-                            val amplitude = if (isFloat.value) {
-                                var maxAbsAmplitude = 0.0
-                                var maxAmplitude = 0.0
-                                // 使用ByteBuffer正确解析float数据
-                                val byteBuffer = ByteBuffer.wrap(audioBuffer.array(), 0, frameBytes)
-                                    .order(ByteOrder.LITTLE_ENDIAN)
-                                val floatBuffer = byteBuffer.asFloatBuffer()
-                                val floatArray = FloatArray(frameBytes / 4)
-                                floatBuffer.get(floatArray)
-                                
-                                // 计算最大振幅，保留正负号
-                                for (sample in floatArray) {
-                                    val absValue = abs(sample.toDouble())
-                                    if (absValue > maxAbsAmplitude) {
-                                        maxAbsAmplitude = absValue
-                                        maxAmplitude = sample.toDouble()
-                                    }
+                            // 计算这一帧数据中的振幅值
+                            audioBuffer.position(0)
+                            val amplitudes = calculateAmplitude(audioBuffer, frameBytes)
+                            
+                            if (isStereo.value) {
+                                // 立体声：更新左右声道数据
+                                _leftChannelData.value = (listOf(amplitudes.first) + _leftChannelData.value).take(maxWaveformPoints)
+                                amplitudes.second?.let { rightAmplitude ->
+                                    _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
                                 }
-                                // 对float格式的数据进行放大，使其更容易看到波形
-                                maxAmplitude //* 10.0
                             } else {
-                                val shortBuffer = audioBuffer.asShortBuffer()
-                                shortBuffer.get(frameBytes / 2 - 1) / 32768.0
+                                // 单声道：左右声道使用相同数据
+                                _leftChannelData.value = (listOf(amplitudes.first) + _leftChannelData.value).take(maxWaveformPoints)
+                                _rightChannelData.value = _leftChannelData.value
                             }
-                            
-                            // 将振幅限制在-1到1范围内，以防万一有超出范围的值
-                            val normalizedAmplitude = amplitude.coerceIn(-1.0, 1.0)
-                            
-//                            Log.d(TAG, "Updating waveform: raw amplitude=$amplitude, normalized=$normalizedAmplitude, isFloat=${isFloat.value}")
-                            updateWaveform(normalizedAmplitude.toFloat())
                             
                             // 重置状态
                             accumulatedSamples = 0
@@ -403,7 +491,6 @@ class RecorderViewModel : ViewModel() {
                 recorder?.release()
                 mediaPlayer?.release()
                 recordingStatus.value = false
-                _waveformData.value = emptyList()
             }
         }
     }
@@ -433,13 +520,15 @@ class RecorderViewModel : ViewModel() {
                 if (!ret) {
                     recordingStatus.value = false
                     // 初始化失败时清空波形数据
-                    _waveformData.value = emptyList()
+                    _leftChannelData.value = emptyList()
+                    _rightChannelData.value = emptyList()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Oboe record failed", e)
                 recordingStatus.value = false
                 // 初始化失败时清空波形数据
-                _waveformData.value = emptyList()
+                _leftChannelData.value = emptyList()
+                _rightChannelData.value = emptyList()
             }
         }
     }
@@ -564,25 +653,15 @@ class RecorderViewModel : ViewModel() {
 
     // 供native层调用的方法，用于更新波形数据
     @Keep
-    private fun updateWaveformFromNative(amplitude: Float) {
-        Log.d(TAG, "updateWaveformFromNative: amplitude=$amplitude")
+    private fun updateWaveformFromNative(leftAmplitude: Float, rightAmplitude: Float) {
         viewModelScope.launch(Dispatchers.Main) {
-            val currentData = _waveformData.value.toMutableList()
-            currentData.add(0, amplitude)  // 在列表开头添加新数据
-            if (currentData.size > maxWaveformPoints) {
-                currentData.removeAt(currentData.size - 1)  // 移除最后一个数据点
-            }
-            _waveformData.value = currentData
-            Log.d(TAG, "Waveform updated from native: size=${currentData.size}, amplitude=$amplitude")
+            _leftChannelData.value = (listOf(leftAmplitude) + _leftChannelData.value).take(maxWaveformPoints)
+            _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
         }
     }
 
     fun setMaxWaveformPoints(points: Int) {
         maxWaveformPoints = points
-        // 如果当前数据点数超过新的最大值，需要裁剪
-        if (_waveformData.value.size > points) {
-            _waveformData.value = _waveformData.value.takeLast(points)
-        }
     }
 
     fun setSelectedDeviceId(value: Int) {

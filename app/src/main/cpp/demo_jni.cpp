@@ -39,16 +39,17 @@ private:
     int32_t sampleRate;
     bool isStereo;
     int32_t samplesPerFrame;
-    float maxAmplitude = 0.0f;
+    float maxLeftAmplitude = 0.0f;
+    float maxRightAmplitude = 0.0f;
     int32_t accumulatedSamples = 0;
     int32_t samplesPerUpdate;
     int32_t deviceId;
     int32_t audioSource;
 
-    void updateWaveform(float amplitude) {
+    void updateWaveform(float leftAmplitude, float rightAmplitude) {
         JNIEnv *env;
         if (javaVm->AttachCurrentThread(&env, nullptr) == JNI_OK) {
-            env->CallVoidMethod(recorderViewModel, updateWaveformMethodId, amplitude);
+            env->CallVoidMethod(recorderViewModel, updateWaveformMethodId, leftAmplitude, rightAmplitude);
             javaVm->DetachCurrentThread();
         }
     }
@@ -81,28 +82,63 @@ public:
         // 计算波形数据
         if (isFloat) {
             const float* floatData = static_cast<const float*>(audioData);
-            for (int i = 0; i < numFrames * samplesPerFrame; i++) {
-                float sample = floatData[i];
-                if (std::abs(sample) > std::abs(maxAmplitude)) {
-                    maxAmplitude = sample;
+            if (isStereo) {
+                // 立体声模式，分别计算左右声道
+                for (int i = 0; i < numFrames * 2; i += 2) {
+                    float leftSample = floatData[i];
+                    float rightSample = floatData[i + 1];
+                    
+                    if (std::abs(leftSample) > std::abs(maxLeftAmplitude)) {
+                        maxLeftAmplitude = leftSample;
+                    }
+                    if (std::abs(rightSample) > std::abs(maxRightAmplitude)) {
+                        maxRightAmplitude = rightSample;
+                    }
                 }
+            } else {
+                // 单声道模式
+                for (int i = 0; i < numFrames; i++) {
+                    float sample = floatData[i];
+                    if (std::abs(sample) > std::abs(maxLeftAmplitude)) {
+                        maxLeftAmplitude = sample;
+                    }
+                }
+                maxRightAmplitude = maxLeftAmplitude;  // 单声道时左右声道相同
             }
         } else {
             const int16_t* shortData = static_cast<const int16_t*>(audioData);
-            for (int i = 0; i < numFrames * samplesPerFrame; i++) {
-                float sample = shortData[i] / 32768.0f;
-                if (std::abs(sample) > std::abs(maxAmplitude)) {
-                    maxAmplitude = sample;
+            if (isStereo) {
+                // 立体声模式，分别计算左右声道
+                for (int i = 0; i < numFrames * 2; i += 2) {
+                    float leftSample = shortData[i] / 32768.0f;
+                    float rightSample = shortData[i + 1] / 32768.0f;
+                    
+                    if (std::abs(leftSample) > std::abs(maxLeftAmplitude)) {
+                        maxLeftAmplitude = leftSample;
+                    }
+                    if (std::abs(rightSample) > std::abs(maxRightAmplitude)) {
+                        maxRightAmplitude = rightSample;
+                    }
                 }
+            } else {
+                // 单声道模式
+                for (int i = 0; i < numFrames; i++) {
+                    float sample = shortData[i] / 32768.0f;
+                    if (std::abs(sample) > std::abs(maxLeftAmplitude)) {
+                        maxLeftAmplitude = sample;
+                    }
+                }
+                maxRightAmplitude = maxLeftAmplitude;  // 单声道时左右声道相同
             }
         }
 
         accumulatedSamples += numFrames;
         if (accumulatedSamples >= samplesPerUpdate) {
             // 更新波形数据
-            updateWaveform(maxAmplitude);
+            updateWaveform(maxLeftAmplitude, maxRightAmplitude);
             // 重置状态
-            maxAmplitude = 0.0f;
+            maxLeftAmplitude = 0.0f;
+            maxRightAmplitude = 0.0f;
             accumulatedSamples = 0;
         }
 
@@ -164,7 +200,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     }
 
     // 获取updateWaveformFromNative方法ID
-    updateWaveformMethodId = env->GetMethodID(viewModelClass, "updateWaveformFromNative", "(F)V");
+    updateWaveformMethodId = env->GetMethodID(viewModelClass, "updateWaveformFromNative", "(FF)V");
     if (updateWaveformMethodId == nullptr) {
         return JNI_ERR;
     }
