@@ -557,12 +557,24 @@ class RecorderViewModel : ViewModel() {
         return "record_${channelStr}_${sampleRateStr}_${formatStr}.pcm"
     }
 
-    // 供native层调用的方法，用于更新波形数据
+    // 供native层调用的方法，用于处理音频数据
     @Keep
-    private fun updateWaveformFromNative(leftAmplitude: Float, rightAmplitude: Float) {
+    private fun onAudioData(audioData: ByteArray, size: Int) {
+        val buffer = ByteBuffer.wrap(audioData)
+        val amplitudes = calculateAmplitude(buffer, size)
+        
         viewModelScope.launch(Dispatchers.Main) {
-            _leftChannelData.value = (listOf(leftAmplitude) + _leftChannelData.value).take(maxWaveformPoints)
-            _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
+            if (isStereo.value) {
+                // 立体声：更新左右声道数据
+                _leftChannelData.value = (listOf(amplitudes.first) + _leftChannelData.value).take(maxWaveformPoints)
+                amplitudes.second?.let { rightAmplitude ->
+                    _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
+                }
+            } else {
+                // 单声道：左右声道使用相同数据
+                _leftChannelData.value = (listOf(amplitudes.first) + _leftChannelData.value).take(maxWaveformPoints)
+                _rightChannelData.value = _leftChannelData.value
+            }
         }
     }
 

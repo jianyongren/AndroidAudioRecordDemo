@@ -8,7 +8,7 @@
 #define LOG(...) __android_log_print(ANDROID_LOG_DEBUG, "DemoJNI", __VA_ARGS__)
 
 static JavaVM* javaVm = nullptr;
-static jmethodID updateWaveformMethodId = nullptr;
+static jmethodID onAudioDataMethodId = nullptr;
 static jobject recorderViewModel = nullptr;
 
 // 用于写入文件的辅助类
@@ -39,18 +39,31 @@ private:
     int32_t sampleRate;
     bool isStereo;
     int32_t samplesPerFrame;
-    float maxLeftAmplitude = 0.0f;
-    float maxRightAmplitude = 0.0f;
     int32_t accumulatedSamples = 0;
     int32_t samplesPerUpdate;
     int32_t deviceId;
     int32_t audioSource;
     int32_t audioApi;
 
-    void updateWaveform(float leftAmplitude, float rightAmplitude) {
+    void sendAudioDataToJava(const void* audioData, int32_t numFrames) {
         JNIEnv *env;
         if (javaVm->AttachCurrentThread(&env, nullptr) == JNI_OK) {
-            env->CallVoidMethod(recorderViewModel, updateWaveformMethodId, leftAmplitude, rightAmplitude);
+            // 计算数据大小
+            size_t bytesPerSample = isFloat ? sizeof(float) : sizeof(int16_t);
+            size_t channelCount = isStereo ? 2 : 1;
+            size_t totalBytes = numFrames * channelCount * bytesPerSample;
+
+            // 创建Java字节数组
+            jbyteArray audioArray = env->NewByteArray(totalBytes);
+            env->SetByteArrayRegion(audioArray, 0, totalBytes, 
+                                  static_cast<const jbyte*>(audioData));
+
+            // 调用Java方法
+            env->CallVoidMethod(recorderViewModel, onAudioDataMethodId, 
+                              audioArray, static_cast<jint>(totalBytes));
+
+            // 清理
+            env->DeleteLocalRef(audioArray);
             javaVm->DetachCurrentThread();
         }
     }
@@ -77,79 +90,34 @@ private:
     }
 
 public:
-    explicit OboeRecorder(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, 
-                         int32_t deviceId, int32_t audioSource, int32_t audioApi, int32_t sampleUpdatePeriodMs)
-            : isFloat(isFloat), sampleRate(sampleRate), isStereo(isStereo), 
-              deviceId(deviceId), audioSource(audioSource), audioApi(audioApi) {
-        samplesPerFrame = isStereo ? 2 : 1;
-        // 使用传入的采样周期参数计算每次更新需要的采样点数
+    OboeRecorder(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat,
+                int32_t deviceId, int32_t audioSource, int32_t audioApi, int32_t sampleUpdatePeriodMs)
+        : writer(std::make_unique<DataWriter>(filePath))
+        , isFloat(isFloat)
+        , sampleRate(sampleRate)
+        , isStereo(isStereo)
+        , samplesPerFrame(isStereo ? 2 : 1)
+        , deviceId(deviceId)
+        , audioSource(audioSource)
+        , audioApi(audioApi) {
+        // 计算每次更新所需的采样点数
         samplesPerUpdate = (sampleRate * sampleUpdatePeriodMs) / 1000;
-        writer = std::make_unique<DataWriter>(filePath);
     }
 
-    oboe::DataCallbackResult onAudioReady(oboe::AudioStream *audioStream, void *audioData, int32_t numFrames) override {
-        writer->write(audioData, numFrames * samplesPerFrame * (isFloat ? sizeof(float) : sizeof(int16_t)));
+    oboe::DataCallbackResult onAudioReady(
+            oboe::AudioStream *audioStream,
+            void *audioData,
+            int32_t numFrames) override {
+        // 写入文件
+        size_t bytesPerSample = isFloat ? sizeof(float) : sizeof(int16_t);
+        size_t totalBytes = numFrames * samplesPerFrame * bytesPerSample;
+        writer->write(audioData, totalBytes);
 
-        // 计算波形数据
-        if (isFloat) {
-            const auto* floatData = static_cast<const float*>(audioData);
-            if (isStereo) {
-                // 立体声模式，分别计算左右声道
-                for (int i = 0; i < numFrames * 2; i += 2) {
-                    float leftSample = floatData[i];
-                    float rightSample = floatData[i + 1];
-                    
-                    if (std::abs(leftSample) > std::abs(maxLeftAmplitude)) {
-                        maxLeftAmplitude = leftSample;
-                    }
-                    if (std::abs(rightSample) > std::abs(maxRightAmplitude)) {
-                        maxRightAmplitude = rightSample;
-                    }
-                }
-            } else {
-                // 单声道模式
-                for (int i = 0; i < numFrames; i++) {
-                    float sample = floatData[i];
-                    if (std::abs(sample) > std::abs(maxLeftAmplitude)) {
-                        maxLeftAmplitude = sample;
-                    }
-                }
-                maxRightAmplitude = maxLeftAmplitude;  // 单声道时左右声道相同
-            }
-        } else {
-            const auto* shortData = static_cast<const int16_t*>(audioData);
-            if (isStereo) {
-                // 立体声模式，分别计算左右声道
-                for (int i = 0; i < numFrames * 2; i += 2) {
-                    float leftSample = shortData[i] / 32768.0f;
-                    float rightSample = shortData[i + 1] / 32768.0f;
-                    
-                    if (std::abs(leftSample) > std::abs(maxLeftAmplitude)) {
-                        maxLeftAmplitude = leftSample;
-                    }
-                    if (std::abs(rightSample) > std::abs(maxRightAmplitude)) {
-                        maxRightAmplitude = rightSample;
-                    }
-                }
-            } else {
-                // 单声道模式
-                for (int i = 0; i < numFrames; i++) {
-                    float sample = shortData[i] / 32768.0f;
-                    if (std::abs(sample) > std::abs(maxLeftAmplitude)) {
-                        maxLeftAmplitude = sample;
-                    }
-                }
-                maxRightAmplitude = maxLeftAmplitude;  // 单声道时左右声道相同
-            }
-        }
-
+        // 累积采样点数
         accumulatedSamples += numFrames;
         if (accumulatedSamples >= samplesPerUpdate) {
-            // 更新波形数据
-            updateWaveform(maxLeftAmplitude, maxRightAmplitude);
-            // 重置状态
-            maxLeftAmplitude = 0.0f;
-            maxRightAmplitude = 0.0f;
+            // 发送数据到Java层进行波形计算
+            sendAudioDataToJava(audioData, numFrames);
             accumulatedSamples = 0;
         }
 
@@ -198,7 +166,10 @@ public:
     }
 };
 
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
+static std::unique_ptr<OboeRecorder> gRecorder;
+
+extern "C" JNIEXPORT jint JNICALL
+JNI_OnLoad(JavaVM* vm, void* reserved) {
     javaVm = vm;
     JNIEnv* env;
     if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
@@ -211,16 +182,14 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
         return JNI_ERR;
     }
 
-    // 获取updateWaveformFromNative方法ID
-    updateWaveformMethodId = env->GetMethodID(viewModelClass, "updateWaveformFromNative", "(FF)V");
-    if (updateWaveformMethodId == nullptr) {
+    // 获取onAudioData方法ID
+    onAudioDataMethodId = env->GetMethodID(viewModelClass, "onAudioData", "([BI)V");
+    if (onAudioDataMethodId == nullptr) {
         return JNI_ERR;
     }
 
     return JNI_VERSION_1_6;
 }
-
-static std::unique_ptr<OboeRecorder> gRecorder;
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1start_1record(
@@ -248,14 +217,13 @@ Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1start_1record(
 extern "C" JNIEXPORT void JNICALL
 Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1stop_1record(
         JNIEnv* env,
-        jobject /* this */) {
+        jobject thiz) {
     if (gRecorder) {
         gRecorder->stop();
         gRecorder.reset();
     }
     
-    // 释放全局引用
-    if (recorderViewModel != nullptr) {
+    if (recorderViewModel) {
         env->DeleteGlobalRef(recorderViewModel);
         recorderViewModel = nullptr;
     }
