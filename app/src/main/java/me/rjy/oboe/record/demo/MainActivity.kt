@@ -633,7 +633,7 @@ private fun SampleRateSection(viewModel: RecorderViewModel) {
                 .padding(start = 8.dp)
         ) {
             TextField(
-                value = "${viewModel.sampleRate.value/1000}kHz",
+                value = "${viewModel.sampleRate.intValue}Hz",
                 onValueChange = {},
                 readOnly = true,
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sampleRateExpanded) },
@@ -651,7 +651,7 @@ private fun SampleRateSection(viewModel: RecorderViewModel) {
             ) {
                 listOf(8000, 16000, 44100, 48000).forEach { rate ->
                     DropdownMenuItem(
-                        text = { Text("${rate/1000}kHz") },
+                        text = { Text("${rate}Hz") },
                         onClick = {
                             viewModel.setSampleRate(rate)
                             sampleRateExpanded = false
