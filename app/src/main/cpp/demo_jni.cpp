@@ -78,12 +78,12 @@ private:
 
 public:
     explicit OboeRecorder(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, 
-                         int32_t deviceId, int32_t audioSource, int32_t audioApi)
+                         int32_t deviceId, int32_t audioSource, int32_t audioApi, int32_t sampleUpdatePeriodMs)
             : isFloat(isFloat), sampleRate(sampleRate), isStereo(isStereo), 
               deviceId(deviceId), audioSource(audioSource), audioApi(audioApi) {
         samplesPerFrame = isStereo ? 2 : 1;
-        // 计算每20ms需要的采样点数
-        samplesPerUpdate = (sampleRate * 0.02);
+        // 使用传入的采样周期参数计算每次更新需要的采样点数
+        samplesPerUpdate = (sampleRate * sampleUpdatePeriodMs) / 1000;
         writer = std::make_unique<DataWriter>(filePath);
     }
 
@@ -117,7 +117,7 @@ public:
                 maxRightAmplitude = maxLeftAmplitude;  // 单声道时左右声道相同
             }
         } else {
-            const int16_t* shortData = static_cast<const int16_t*>(audioData);
+            const auto* shortData = static_cast<const int16_t*>(audioData);
             if (isStereo) {
                 // 立体声模式，分别计算左右声道
                 for (int i = 0; i < numFrames * 2; i += 2) {
@@ -232,12 +232,14 @@ Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1start_1record(
         jboolean isFloat,
         jint deviceId,
         jint audioSource,
-        jint audioApi) {
+        jint audioApi,
+        jint sampleUpdatePeriodMs) {
     // 保存RecorderViewModel的全局引用
     recorderViewModel = env->NewGlobalRef(thiz);
     
     const char* str = env->GetStringUTFChars(path, nullptr);
-    gRecorder = std::make_unique<OboeRecorder>(str, sampleRate, isStereo, isFloat, deviceId, audioSource, audioApi);
+    gRecorder = std::make_unique<OboeRecorder>(str, sampleRate, isStereo, isFloat, deviceId, 
+                                              audioSource, audioApi, sampleUpdatePeriodMs);
     env->ReleaseStringUTFChars(path, str);
 
     return gRecorder->start();

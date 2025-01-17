@@ -204,7 +204,7 @@ class RecorderViewModel : ViewModel() {
     }
 
     val recordedFilePath = mutableStateOf<String?>(null)
-    val selectedDeviceId = mutableStateOf(0) // 选中的录音设备ID
+    val selectedDeviceId = mutableIntStateOf(0) // 选中的录音设备ID
 
     // 录音设备列表
     data class AudioDevice(
@@ -344,8 +344,8 @@ class RecorderViewModel : ViewModel() {
 
         audioDevices.value = deviceList
         // 如果当前选择的设备不在列表中，选择第一个设备
-        if (deviceList.none { it.id == selectedDeviceId.value } && deviceList.isNotEmpty()) {
-            selectedDeviceId.value = deviceList[0].id
+        if (deviceList.none { it.id == selectedDeviceId.intValue } && deviceList.isNotEmpty()) {
+            selectedDeviceId.intValue = deviceList[0].id
         }
     }
 
@@ -432,7 +432,7 @@ class RecorderViewModel : ViewModel() {
 
             try {
                 var accumulatedSamples = 0
-                val samplesPerUpdate = (currentSampleRate * 0.02).toInt() // 每20ms更新一次
+                val samplesPerUpdate = (currentSampleRate * (SAMPLE_UPDATE_PERIOD_MS / 1000.0)).toInt() // 每20ms更新一次
                 Log.d(TAG, "Recording loop started: samplesPerUpdate=$samplesPerUpdate")
 
                 while (!stopRecord) {
@@ -507,7 +507,8 @@ class RecorderViewModel : ViewModel() {
         isFloat: Boolean,
         deviceId: Int,
         audioSource: Int,
-        audioApi: Int
+        audioApi: Int,
+        sampleUpdatePeriodMs: Int
     ): Boolean
     private external fun native_stop_record()
 
@@ -515,21 +516,19 @@ class RecorderViewModel : ViewModel() {
         stopRecord = false
         viewModelScope.launch(newSingleThreadContext("oboe-record-thread")) {
             try {
-                val ret = native_start_record(
+                recordingStatus.value = native_start_record(
                     pcmPath,
                     currentSampleRate,
                     isStereo.value,
                     isFloat.value,
-                    selectedDeviceId.value,
+                    selectedDeviceId.intValue,
                     selectedAudioSource.intValue,
-                    selectedAudioApi.intValue
+                    selectedAudioApi.intValue,
+                    SAMPLE_UPDATE_PERIOD_MS
                 )
-                if (!ret) {
-                    recordingStatus.value = false
-                    // 初始化失败时清空波形数据
-                    _leftChannelData.value = emptyList()
-                    _rightChannelData.value = emptyList()
-                }
+                // 初始化失败时清空波形数据
+                _leftChannelData.value = emptyList()
+                _rightChannelData.value = emptyList()
             } catch (e: Exception) {
                 Log.e(TAG, "Oboe record failed", e)
                 recordingStatus.value = false
@@ -675,10 +674,12 @@ class RecorderViewModel : ViewModel() {
         if (recordingStatus.value) {
             return
         }
-        selectedDeviceId.value = value
+        selectedDeviceId.intValue = value
     }
 
     companion object {
         private const val TAG = "RecorderViewModel"
+        // 声音波形展示采样周期，单位：毫秒
+        const val SAMPLE_UPDATE_PERIOD_MS = 20
     }
 }
