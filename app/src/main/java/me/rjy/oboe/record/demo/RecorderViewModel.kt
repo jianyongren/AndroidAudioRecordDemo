@@ -51,6 +51,7 @@ class RecorderViewModel : ViewModel() {
     val isFloat = mutableStateOf(false)  // true为float格式,false为short格式
     val useOboe = mutableStateOf(false)  // true使用oboe,false使用AudioRecord
     val selectedAudioSource = mutableIntStateOf(MediaRecorder.AudioSource.DEFAULT) // 选中的音频源
+    val selectedAudioApi = mutableIntStateOf(0) // 选中的AudioApi: 0=Unspecified, 1=AAudio, 2=OpenSLES
 
     // 波形数据
     private val _leftChannelData = mutableStateOf<List<Float>>(emptyList())
@@ -212,6 +213,18 @@ class RecorderViewModel : ViewModel() {
     )
     val audioDevices = mutableStateOf<List<AudioDevice>>(emptyList())
 
+    // 音频API列表
+    data class AudioApiInfo(
+        val id: Int,
+        val name: String
+    )
+
+    val audioApis = listOf(
+        AudioApiInfo(0, "Unspecified"),
+        AudioApiInfo(1, "AAudio"),
+        AudioApiInfo(2, "OpenSLES")
+    )
+
     private val currentSampleRate get() = sampleRate.intValue
     private val currentChannel get() = if(isStereo.value) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
     private val currentFormat get() = if(isFloat.value) AudioFormat.ENCODING_PCM_FLOAT else AudioFormat.ENCODING_PCM_16BIT
@@ -230,6 +243,7 @@ class RecorderViewModel : ViewModel() {
         isFloat.value = settings.isFloat
         echoCanceler.value = settings.echoCanceler
         selectedAudioSource.intValue = settings.audioSource
+        selectedAudioApi.intValue = settings.audioApi
     }
 
     private fun saveSettings(context: Context) {
@@ -239,7 +253,8 @@ class RecorderViewModel : ViewModel() {
             sampleRate = sampleRate.intValue,
             isFloat = isFloat.value,
             echoCanceler = echoCanceler.value,
-            audioSource = selectedAudioSource.intValue
+            audioSource = selectedAudioSource.intValue,
+            audioApi = selectedAudioApi.intValue
         )
         PreferenceManager.saveSettings(context, settings)
     }
@@ -295,6 +310,14 @@ class RecorderViewModel : ViewModel() {
             return
         }
         selectedAudioSource.intValue = value
+        onSettingsChanged()
+    }
+
+    fun setAudioApi(value: Int) {
+        if (recordingStatus.value) {
+            return
+        }
+        selectedAudioApi.intValue = value
         onSettingsChanged()
     }
 
@@ -483,7 +506,8 @@ class RecorderViewModel : ViewModel() {
         isStereo: Boolean,
         isFloat: Boolean,
         deviceId: Int,
-        audioSource: Int
+        audioSource: Int,
+        audioApi: Int
     ): Boolean
     private external fun native_stop_record()
 
@@ -497,7 +521,8 @@ class RecorderViewModel : ViewModel() {
                     isStereo.value,
                     isFloat.value,
                     selectedDeviceId.value,
-                    selectedAudioSource.intValue
+                    selectedAudioSource.intValue,
+                    selectedAudioApi.intValue
                 )
                 if (!ret) {
                     recordingStatus.value = false

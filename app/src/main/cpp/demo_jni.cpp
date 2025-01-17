@@ -45,6 +45,7 @@ private:
     int32_t samplesPerUpdate;
     int32_t deviceId;
     int32_t audioSource;
+    int32_t audioApi;
 
     void updateWaveform(float leftAmplitude, float rightAmplitude) {
         JNIEnv *env;
@@ -67,9 +68,19 @@ private:
         }
     }
 
+    oboe::AudioApi getAudioApi(int32_t audioApi) {
+        switch (audioApi) {
+            case 1: return oboe::AudioApi::AAudio;
+            case 2: return oboe::AudioApi::OpenSLES;
+            default: return oboe::AudioApi::Unspecified;
+        }
+    }
+
 public:
-    explicit OboeRecorder(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, int32_t deviceId, int32_t audioSource)
-            : isFloat(isFloat), sampleRate(sampleRate), isStereo(isStereo), deviceId(deviceId), audioSource(audioSource) {
+    explicit OboeRecorder(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, 
+                         int32_t deviceId, int32_t audioSource, int32_t audioApi)
+            : isFloat(isFloat), sampleRate(sampleRate), isStereo(isStereo), 
+              deviceId(deviceId), audioSource(audioSource), audioApi(audioApi) {
         samplesPerFrame = isStereo ? 2 : 1;
         // 计算每20ms需要的采样点数
         samplesPerUpdate = (sampleRate * 0.02);
@@ -81,7 +92,7 @@ public:
 
         // 计算波形数据
         if (isFloat) {
-            const float* floatData = static_cast<const float*>(audioData);
+            const auto* floatData = static_cast<const float*>(audioData);
             if (isStereo) {
                 // 立体声模式，分别计算左右声道
                 for (int i = 0; i < numFrames * 2; i += 2) {
@@ -153,7 +164,8 @@ public:
                 ->setFormat(isFloat ? oboe::AudioFormat::Float : oboe::AudioFormat::I16)
                 ->setSampleRate(sampleRate)
                 ->setChannelCount(isStereo ? 2 : 1)
-                ->setDataCallback(this);
+                ->setDataCallback(this)
+                ->setAudioApi(getAudioApi(audioApi));
 
         if (deviceId != 0) {
             builder.setDeviceId(deviceId);
@@ -219,12 +231,13 @@ Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1start_1record(
         jboolean isStereo,
         jboolean isFloat,
         jint deviceId,
-        jint audioSource) {
+        jint audioSource,
+        jint audioApi) {
     // 保存RecorderViewModel的全局引用
     recorderViewModel = env->NewGlobalRef(thiz);
     
     const char* str = env->GetStringUTFChars(path, nullptr);
-    gRecorder = std::make_unique<OboeRecorder>(str, sampleRate, isStereo, isFloat, deviceId, audioSource);
+    gRecorder = std::make_unique<OboeRecorder>(str, sampleRate, isStereo, isFloat, deviceId, audioSource, audioApi);
     env->ReleaseStringUTFChars(path, str);
 
     return gRecorder->start();

@@ -53,9 +53,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
+import me.rjy.oboe.record.demo.ui.WaveformView
 import me.rjy.oboe.record.demo.ui.theme.OboeRecordDemoTheme
 import java.io.File
-import me.rjy.oboe.record.demo.ui.WaveformView
 
 class MainActivity : ComponentActivity() {
 
@@ -381,46 +381,89 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RecordMethodSection(viewModel: RecorderViewModel) {
     Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = "录音方式:", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = "录音方式：",
+            style = MaterialTheme.typography.bodyMedium,
+        )
         Row(
             horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 8.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RadioButton(
-                    selected = !viewModel.useOboe.value,
-                    onClick = { viewModel.setUseOboe(false) }
-                )
-                Text(
-                    text = "AudioRecord",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.clickable { viewModel.setUseOboe(false) }
-                )
+            RadioButton(
+                selected = !viewModel.useOboe.value,
+                onClick = { viewModel.setUseOboe(false) }
+            )
+            Text(
+                text = "AudioRecord",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.clickable { viewModel.setUseOboe(false) }
+            )
+            RadioButton(
+                selected = viewModel.useOboe.value,
+                onClick = { viewModel.setUseOboe(true) }
+            )
+            Text(
+                text = "Oboe",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.clickable { viewModel.setUseOboe(true) }
+            )
+        }
+    }
+
+    // 只在选择Oboe时显示AudioApi选择
+    if (viewModel.useOboe.value) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(text = "音频API:", style = MaterialTheme.typography.bodyMedium)
+            var audioApiExpanded by remember { mutableStateOf(false) }
+            val currentApi = viewModel.audioApis.find {
+                it.id == viewModel.selectedAudioApi.intValue
             }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            ExposedDropdownMenuBox(
+                expanded = audioApiExpanded,
+                onExpandedChange = { audioApiExpanded = it },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp)
             ) {
-                RadioButton(
-                    selected = viewModel.useOboe.value,
-                    onClick = { viewModel.setUseOboe(true) }
+                TextField(
+                    value = currentApi?.name ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = audioApiExpanded) },
+                    modifier = Modifier.menuAnchor(),
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                        focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    textStyle = MaterialTheme.typography.bodyMedium
                 )
-                Text(
-                    text = "Oboe",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.clickable { viewModel.setUseOboe(true) }
-                )
+                ExposedDropdownMenu(
+                    expanded = audioApiExpanded,
+                    onDismissRequest = { audioApiExpanded = false }
+                ) {
+                    viewModel.audioApis.forEach { api ->
+                        DropdownMenuItem(
+                            text = { Text(api.name) },
+                            onClick = {
+                                viewModel.setAudioApi(api.id)
+                                audioApiExpanded = false
+                            }
+                        )
+                    }
+                }
             }
         }
     }
