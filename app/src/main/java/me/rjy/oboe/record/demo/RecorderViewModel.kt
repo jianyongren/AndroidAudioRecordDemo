@@ -31,12 +31,11 @@ import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.concurrent.Volatile
-import kotlin.math.abs
-
 
 class RecorderViewModel : ViewModel() {
     private var recorder: AudioRecord? = null
     private var mediaPlayer: MediaPlayer? = null
+    private var amplitudeCalculator: AmplitudeCalculator? = null
 
     @Volatile
     private var stopRecord = false
@@ -63,125 +62,23 @@ class RecorderViewModel : ViewModel() {
     // 波形数据的最大采样点数，由View的宽度决定
     private var maxWaveformPoints = 150
 
-    // 计算200ms对应的采样点数
-    private fun getSamplePoints(): Int {
-        return (currentSampleRate * 0.2).toInt()
+    // 更新振幅计算策略
+    private fun updateAmplitudeCalculator() {
+        amplitudeCalculator = when {
+            isFloat.value && isStereo.value -> FloatStereoAmplitudeCalculator()
+            isFloat.value && !isStereo.value -> FloatMonoAmplitudeCalculator()
+            !isFloat.value && isStereo.value -> ShortStereoAmplitudeCalculator()
+            else -> ShortMonoAmplitudeCalculator()
+        }
     }
 
     // 计算一组采样的振幅
     private fun calculateAmplitude(buffer: ByteBuffer, size: Int): Pair<Float, Float?> {
-        buffer.order(ByteOrder.LITTLE_ENDIAN)  // 确保字节序正确
-        
-        if (isFloat.value) {
-            val floatBuffer = buffer.asFloatBuffer()
-            val numSamples = size / 4  // float类型每个采样4字节
-            
-            if (isStereo.value) {
-                var maxLeftAmplitude = 0.0
-                var maxRightAmplitude = 0.0
-                
-                // 分别计算左右声道的最大振幅
-                val samplesPerChannel = numSamples / 2  // 双声道时每个声道的采样点数
-                for (i in 0 until samplesPerChannel) {
-                    val leftSample = floatBuffer.get(i * 2)
-                    val rightSample = floatBuffer.get(i * 2 + 1)
-                    
-                    if (abs(leftSample) > abs(maxLeftAmplitude)) {
-                        maxLeftAmplitude = leftSample.toDouble()
-                    }
-                    
-                    if (abs(rightSample) > abs(maxRightAmplitude)) {
-                        maxRightAmplitude = rightSample.toDouble()
-                    }
-                }
-                
-                return Pair(
-                    maxLeftAmplitude.coerceIn(-1.0, 1.0).toFloat(),
-                    maxRightAmplitude.coerceIn(-1.0, 1.0).toFloat()
-                )
-            } else {
-                var maxAmplitude = 0.0
-                
-                for (i in 0 until numSamples) {
-                    val sample = floatBuffer.get(i)
-                    if (abs(sample) > maxAmplitude) {
-                        maxAmplitude = sample.toDouble()
-                    }
-                }
-                
-                return Pair(
-                    maxAmplitude.coerceIn(-1.0, 1.0).toFloat(),
-                    null
-                )
-            }
-        } else {
-            val shortBuffer = buffer.asShortBuffer()
-            val numSamples = size / 2  // short类型每个采样2字节
-            
-            if (isStereo.value) {
-                var maxLeftAmplitude = 0.0
-                var maxRightAmplitude = 0.0
-                
-                // 分别计算左右声道的最大振幅
-                val samplesPerChannel = numSamples / 2  // 双声道时每个声道的采样点数
-                for (i in 0 until samplesPerChannel) {
-                    val leftSample = shortBuffer.get(i * 2) / 32768.0
-                    val rightSample = shortBuffer.get(i * 2 + 1) / 32768.0
-                    
-                    if (abs(leftSample) > abs(maxLeftAmplitude)) {
-                        maxLeftAmplitude = leftSample
-                    }
-                    
-                    if (abs(rightSample) > abs(maxRightAmplitude)) {
-                        maxRightAmplitude = rightSample
-                    }
-                }
-                
-                return Pair(
-                    maxLeftAmplitude.coerceIn(-1.0, 1.0).toFloat(),
-                    maxRightAmplitude.coerceIn(-1.0, 1.0).toFloat()
-                )
-            } else {
-                var maxAmplitude = 0.0
-                
-                for (i in 0 until numSamples) {
-                    val sample = shortBuffer.get(i) / 32768.0
-                    if (abs(sample) > abs(maxAmplitude)) {
-                        maxAmplitude = sample
-                    }
-                }
-                
-                return Pair(
-                    maxAmplitude.coerceIn(-1.0, 1.0).toFloat(),
-                    null
-                )
-            }
+        if (amplitudeCalculator == null) {
+            updateAmplitudeCalculator()
         }
-    }
-
-    // 更新波形数据
-    private fun updateWaveform(leftAmplitude: Float, rightAmplitude: Float? = null) {
-        viewModelScope.launch(Dispatchers.Main) {
-            val currentLeft = _leftChannelData.value.toMutableList()
-            val currentRight = _rightChannelData.value.toMutableList()
-
-            // 添加新数据到开头
-            currentLeft.add(0, leftAmplitude)
-            if (rightAmplitude != null) {
-                currentRight.add(0, rightAmplitude)
-            }
-
-            // 移除超出最大点数的数据
-            if (currentLeft.size > maxWaveformPoints) {
-                currentLeft.removeAt(currentLeft.size - 1)
-            }
-            if (currentRight.size > maxWaveformPoints) {
-                currentRight.removeAt(currentRight.size - 1)
-            }
-
-            _leftChannelData.value = currentLeft
-            _rightChannelData.value = currentRight
-        }
+        return amplitudeCalculator?.calculateAmplitude(buffer, size)
+            ?: Pair(0f, null)
     }
 
     // 音频源列表
@@ -244,6 +141,7 @@ class RecorderViewModel : ViewModel() {
         echoCanceler.value = settings.echoCanceler
         selectedAudioSource.intValue = settings.audioSource
         selectedAudioApi.intValue = settings.audioApi
+        updateAmplitudeCalculator()
     }
 
     private fun saveSettings(context: Context) {
@@ -278,6 +176,7 @@ class RecorderViewModel : ViewModel() {
             return
         }
         isStereo.value = value
+        updateAmplitudeCalculator()
         onSettingsChanged()
     }
 
@@ -294,6 +193,7 @@ class RecorderViewModel : ViewModel() {
             return
         }
         isFloat.value = value
+        updateAmplitudeCalculator()
         onSettingsChanged()
     }
 
