@@ -76,8 +76,6 @@ class RecorderViewModel : ViewModel() {
             val numSamples = size / 4  // float类型每个采样4字节
             
             if (isStereo.value) {
-                var maxLeftAbsAmplitude = 0.0
-                var maxRightAbsAmplitude = 0.0
                 var maxLeftAmplitude = 0.0
                 var maxRightAmplitude = 0.0
                 
@@ -87,15 +85,11 @@ class RecorderViewModel : ViewModel() {
                     val leftSample = floatBuffer.get(i * 2)
                     val rightSample = floatBuffer.get(i * 2 + 1)
                     
-                    val leftAbs = abs(leftSample.toDouble())
-                    if (leftAbs > maxLeftAbsAmplitude) {
-                        maxLeftAbsAmplitude = leftAbs
+                    if (abs(leftSample) > abs(maxLeftAmplitude)) {
                         maxLeftAmplitude = leftSample.toDouble()
                     }
                     
-                    val rightAbs = abs(rightSample.toDouble())
-                    if (rightAbs > maxRightAbsAmplitude) {
-                        maxRightAbsAmplitude = rightAbs
+                    if (abs(rightSample) > abs(maxRightAmplitude)) {
                         maxRightAmplitude = rightSample.toDouble()
                     }
                 }
@@ -105,14 +99,11 @@ class RecorderViewModel : ViewModel() {
                     maxRightAmplitude.coerceIn(-1.0, 1.0).toFloat()
                 )
             } else {
-                var maxAbsAmplitude = 0.0
                 var maxAmplitude = 0.0
                 
                 for (i in 0 until numSamples) {
                     val sample = floatBuffer.get(i)
-                    val absValue = abs(sample.toDouble())
-                    if (absValue > maxAbsAmplitude) {
-                        maxAbsAmplitude = absValue
+                    if (abs(sample) > maxAmplitude) {
                         maxAmplitude = sample.toDouble()
                     }
                 }
@@ -127,8 +118,6 @@ class RecorderViewModel : ViewModel() {
             val numSamples = size / 2  // short类型每个采样2字节
             
             if (isStereo.value) {
-                var maxLeftAbsAmplitude = 0.0
-                var maxRightAbsAmplitude = 0.0
                 var maxLeftAmplitude = 0.0
                 var maxRightAmplitude = 0.0
                 
@@ -138,15 +127,11 @@ class RecorderViewModel : ViewModel() {
                     val leftSample = shortBuffer.get(i * 2) / 32768.0
                     val rightSample = shortBuffer.get(i * 2 + 1) / 32768.0
                     
-                    val leftAbs = abs(leftSample)
-                    if (leftAbs > maxLeftAbsAmplitude) {
-                        maxLeftAbsAmplitude = leftAbs
+                    if (abs(leftSample) > abs(maxLeftAmplitude)) {
                         maxLeftAmplitude = leftSample
                     }
                     
-                    val rightAbs = abs(rightSample)
-                    if (rightAbs > maxRightAbsAmplitude) {
-                        maxRightAbsAmplitude = rightAbs
+                    if (abs(rightSample) > abs(maxRightAmplitude)) {
                         maxRightAmplitude = rightSample
                     }
                 }
@@ -156,14 +141,11 @@ class RecorderViewModel : ViewModel() {
                     maxRightAmplitude.coerceIn(-1.0, 1.0).toFloat()
                 )
             } else {
-                var maxAbsAmplitude = 0.0
                 var maxAmplitude = 0.0
                 
                 for (i in 0 until numSamples) {
                     val sample = shortBuffer.get(i) / 32768.0
-                    val absValue = abs(sample)
-                    if (absValue > maxAbsAmplitude) {
-                        maxAbsAmplitude = absValue
+                    if (abs(sample) > abs(maxAmplitude)) {
                         maxAmplitude = sample
                     }
                 }

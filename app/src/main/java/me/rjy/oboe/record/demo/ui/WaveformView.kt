@@ -31,7 +31,7 @@ fun WaveformView(
     LaunchedEffect(waveformData) {
         if (waveformData.size != lastSize) {
             lastSize = waveformData.size
-            Log.d(TAG, "Waveform data size changed: $lastSize")
+//            Log.d(TAG, "Waveform data size changed: $lastSize")
         }
     }
 
