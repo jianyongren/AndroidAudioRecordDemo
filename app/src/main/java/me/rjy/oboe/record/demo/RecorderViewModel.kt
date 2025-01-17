@@ -264,7 +264,7 @@ class RecorderViewModel : ViewModel() {
         if (recordingStatus.value) {
             return
         }
-        // 重置波形数据
+        // 只在开始录音时重置波形数据
         _waveformData.value = emptyList()
         recordingStatus.value = true
         recordedFilePath.value = pcmPath
@@ -301,6 +301,8 @@ class RecorderViewModel : ViewModel() {
         if (recorder?.state != AudioRecord.STATE_INITIALIZED) {
             Log.e(TAG, "AudioRecord init failed")
             recordingStatus.value = false
+            // 初始化失败时清空波形数据
+            _waveformData.value = emptyList()
             return
         }
         stopRecord = false
@@ -430,13 +432,13 @@ class RecorderViewModel : ViewModel() {
                 )
                 if (!ret) {
                     recordingStatus.value = false
-                    // 重置波形数据
+                    // 初始化失败时清空波形数据
                     _waveformData.value = emptyList()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Oboe record failed", e)
                 recordingStatus.value = false
-                // 重置波形数据
+                // 初始化失败时清空波形数据
                 _waveformData.value = emptyList()
             }
         }
@@ -447,8 +449,7 @@ class RecorderViewModel : ViewModel() {
         if (useOboe.value) {
             native_stop_record()
             recordingStatus.value = false
-            // 重置波形数据
-            _waveformData.value = emptyList()
+            // 移除停止录音时清空波形数据的代码
         }
     }
 
