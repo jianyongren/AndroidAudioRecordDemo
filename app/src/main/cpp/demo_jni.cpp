@@ -1,69 +1,138 @@
 #include <jni.h>
+#include <string>
+#include <memory>
 #include <android/log.h>
 #include <oboe/Oboe.h>
-#include <fstream>
-#include <atomic>
-#include <vector>
+#include <cmath>
 
-#define LOG(...) __android_log_print(ANDROID_LOG_INFO, "DemoJni", __VA_ARGS__)
+#define LOG(...) __android_log_print(ANDROID_LOG_DEBUG, "DemoJNI", __VA_ARGS__)
 
-class OboeRecorder: public oboe::AudioStreamCallback {
+static JavaVM* javaVm = nullptr;
+static jmethodID updateWaveformMethodId = nullptr;
+static jobject recorderViewModel = nullptr;
+
+// 用于写入文件的辅助类
+class DataWriter {
 public:
-    explicit OboeRecorder(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, int32_t deviceId, int32_t audioSource) 
-        : mFilePath(filePath), mShouldRecord(false), 
-          mSampleRate(sampleRate), 
-          mChannelCount(isStereo ? oboe::ChannelCount::Stereo : oboe::ChannelCount::Mono),
-          mFormat(isFloat ? oboe::AudioFormat::Float : oboe::AudioFormat::I16),
-          mDeviceId(deviceId),
-          mAudioSource(audioSource) {}
+    explicit DataWriter(const char* filePath) : file_(fopen(filePath, "wb")) {}
+    ~DataWriter() {
+        if (file_) {
+            fclose(file_);
+        }
+    }
+    
+    void write(const void* data, size_t size) {
+        if (file_) {
+            fwrite(data, 1, size, file_);
+        }
+    }
+    
+private:
+    FILE* file_;
+};
+
+class OboeRecorder : public oboe::AudioStreamDataCallback {
+private:
+    std::shared_ptr<oboe::AudioStream> stream_;
+    std::unique_ptr<DataWriter> writer;
+    bool isFloat;
+    int32_t sampleRate;
+    bool isStereo;
+    int32_t samplesPerFrame;
+    float maxAmplitude = 0.0f;
+    int32_t accumulatedSamples = 0;
+    int32_t samplesPerUpdate;
+    int32_t deviceId;
+    int32_t audioSource;
+
+    void updateWaveform(float amplitude) {
+        JNIEnv *env;
+        if (javaVm->AttachCurrentThread(&env, nullptr) == JNI_OK) {
+            env->CallVoidMethod(recorderViewModel, updateWaveformMethodId, amplitude);
+            javaVm->DetachCurrentThread();
+        }
+    }
 
     oboe::InputPreset getInputPreset(int32_t audioSource) {
         switch (audioSource) {
-            case 0: // MediaRecorder.AudioSource.DEFAULT
-                return oboe::InputPreset::Generic;
-            case 1: // MediaRecorder.AudioSource.MIC
-                return oboe::InputPreset::Generic;
-            case 7: // MediaRecorder.AudioSource.VOICE_COMMUNICATION
-                return oboe::InputPreset::VoiceCommunication;
-            case 6: // MediaRecorder.AudioSource.VOICE_RECOGNITION
-                return oboe::InputPreset::VoiceRecognition;
-            case 5: // MediaRecorder.AudioSource.CAMCORDER
-                return oboe::InputPreset::Camcorder;
-            case 9: // MediaRecorder.AudioSource.UNPROCESSED
-                return oboe::InputPreset::Unprocessed;
-            case 10: // MediaRecorder.AudioSource.VOICE_PERFORMANCE
-                return oboe::InputPreset::VoicePerformance;
-            default:
-                return oboe::InputPreset::Generic;
+            case 0: return oboe::InputPreset::Generic;
+            case 1: return oboe::InputPreset::Generic;
+            case 7: return oboe::InputPreset::VoiceCommunication;
+            case 6: return oboe::InputPreset::VoiceRecognition;
+            case 5: return oboe::InputPreset::Camcorder;
+            case 9: return oboe::InputPreset::Unprocessed;
+            case 10: return oboe::InputPreset::VoicePerformance;
+            default: return oboe::InputPreset::Generic;
         }
+    }
+
+public:
+    explicit OboeRecorder(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, int32_t deviceId, int32_t audioSource)
+            : isFloat(isFloat), sampleRate(sampleRate), isStereo(isStereo), deviceId(deviceId), audioSource(audioSource) {
+        samplesPerFrame = isStereo ? 2 : 1;
+        // 计算每20ms需要的采样点数
+        samplesPerUpdate = (sampleRate * 0.02);
+        writer = std::make_unique<DataWriter>(filePath);
+    }
+
+    oboe::DataCallbackResult onAudioReady(oboe::AudioStream *audioStream, void *audioData, int32_t numFrames) override {
+        writer->write(audioData, numFrames * samplesPerFrame * (isFloat ? sizeof(float) : sizeof(int16_t)));
+
+        // 计算波形数据
+        if (isFloat) {
+            const float* floatData = static_cast<const float*>(audioData);
+            for (int i = 0; i < numFrames * samplesPerFrame; i++) {
+                float sample = floatData[i];
+                if (std::abs(sample) > std::abs(maxAmplitude)) {
+                    maxAmplitude = sample;
+                }
+            }
+        } else {
+            const int16_t* shortData = static_cast<const int16_t*>(audioData);
+            for (int i = 0; i < numFrames * samplesPerFrame; i++) {
+                float sample = shortData[i] / 32768.0f;
+                if (std::abs(sample) > std::abs(maxAmplitude)) {
+                    maxAmplitude = sample;
+                }
+            }
+        }
+
+        accumulatedSamples += numFrames;
+        if (accumulatedSamples >= samplesPerUpdate) {
+            // 更新波形数据
+            updateWaveform(maxAmplitude);
+            // 重置状态
+            maxAmplitude = 0.0f;
+            accumulatedSamples = 0;
+        }
+
+        return oboe::DataCallbackResult::Continue;
     }
 
     bool start() {
         oboe::AudioStreamBuilder builder;
         builder.setDirection(oboe::Direction::Input)
-            ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-            ->setSharingMode(oboe::SharingMode::Exclusive)
-            ->setFormat(mFormat)
-            ->setChannelCount(mChannelCount)
-            ->setSampleRate(mSampleRate)
-            ->setDeviceId(mDeviceId)
-            ->setInputPreset(getInputPreset(mAudioSource))
-            ->setCallback(this);
+                ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
+                ->setSharingMode(oboe::SharingMode::Exclusive)
+                ->setFormat(isFloat ? oboe::AudioFormat::Float : oboe::AudioFormat::I16)
+                ->setSampleRate(sampleRate)
+                ->setChannelCount(isStereo ? 2 : 1)
+                ->setDataCallback(this);
 
-        oboe::Result result = builder.openStream(mStream);
+        if (deviceId != 0) {
+            builder.setDeviceId(deviceId);
+        }
+
+        // 设置音频源
+        builder.setInputPreset(getInputPreset(audioSource));
+
+        oboe::Result result = builder.openStream(stream_);
         if (result != oboe::Result::OK) {
-            LOG("Failed to create stream. Error: %s", oboe::convertToText(result));
+            LOG("Failed to open stream. Error: %s", oboe::convertToText(result));
             return false;
         }
 
-        mOutFile.open(mFilePath, std::ios::binary);
-        if (!mOutFile.is_open()) {
-            LOG("Failed to open file: %s", mFilePath);
-            return false;
-        }
-
-        mShouldRecord = true;
-        result = mStream->requestStart();
+        result = stream_->requestStart();
         if (result != oboe::Result::OK) {
             LOG("Failed to start stream. Error: %s", oboe::convertToText(result));
             return false;
@@ -73,72 +142,70 @@ public:
     }
 
     void stop() {
-        if (mStream) {
-            mShouldRecord = false;
-            mStream->requestStop();
-            mStream->close();
-            mStream.reset();
-        }
-        if (mOutFile.is_open()) {
-            mOutFile.close();
+        if (stream_) {
+            stream_->stop();
+            stream_->close();
+            stream_.reset();
         }
     }
-
-    oboe::DataCallbackResult onAudioReady(
-            oboe::AudioStream *audioStream,
-            void *audioData,
-            int32_t numFrames) override {
-        if (mShouldRecord && mOutFile.is_open()) {
-            size_t bytesPerSample = (mFormat == oboe::AudioFormat::Float) ? sizeof(float) : sizeof(int16_t);
-            size_t bytesToWrite = numFrames * audioStream->getChannelCount() * bytesPerSample;
-            mOutFile.write(static_cast<char*>(audioData), bytesToWrite);
-        }
-        return oboe::DataCallbackResult::Continue;
-    }
-
-private:
-    std::shared_ptr<oboe::AudioStream> mStream;
-    const char* mFilePath;
-    std::ofstream mOutFile;
-    std::atomic<bool> mShouldRecord;
-    int32_t mSampleRate;
-    int32_t mChannelCount;
-    oboe::AudioFormat mFormat;
-    int32_t mDeviceId;
-    int32_t mAudioSource;
 };
+
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
+    javaVm = vm;
+    JNIEnv* env;
+    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        return JNI_ERR;
+    }
+
+    // 获取RecorderViewModel类
+    jclass viewModelClass = env->FindClass("me/rjy/oboe/record/demo/RecorderViewModel");
+    if (viewModelClass == nullptr) {
+        return JNI_ERR;
+    }
+
+    // 获取updateWaveformFromNative方法ID
+    updateWaveformMethodId = env->GetMethodID(viewModelClass, "updateWaveformFromNative", "(F)V");
+    if (updateWaveformMethodId == nullptr) {
+        return JNI_ERR;
+    }
+
+    return JNI_VERSION_1_6;
+}
 
 static std::unique_ptr<OboeRecorder> gRecorder;
 
-extern "C"
-JNIEXPORT jboolean JNICALL
+extern "C" JNIEXPORT jboolean JNICALL
 Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1start_1record(
-    JNIEnv *env, 
-    jobject thiz,
-    jstring path,
-    jint sampleRate,
-    jboolean isStereo,
-    jboolean isFloat,
-    jint deviceId,
-    jint audioSource
-) {
-    const char *str = env->GetStringUTFChars(path, nullptr);
-    LOG("start record... %s, sampleRate: %d, isStereo: %d, isFloat: %d, deviceId: %d, audioSource: %d", 
-        str, sampleRate, isStereo, isFloat, deviceId, audioSource);
+        JNIEnv* env,
+        jobject thiz,
+        jstring path,
+        jint sampleRate,
+        jboolean isStereo,
+        jboolean isFloat,
+        jint deviceId,
+        jint audioSource) {
+    // 保存RecorderViewModel的全局引用
+    recorderViewModel = env->NewGlobalRef(thiz);
     
+    const char* str = env->GetStringUTFChars(path, nullptr);
     gRecorder = std::make_unique<OboeRecorder>(str, sampleRate, isStereo, isFloat, deviceId, audioSource);
-    bool success = gRecorder->start();
-    
     env->ReleaseStringUTFChars(path, str);
-    return success;
+
+    return gRecorder->start();
 }
 
-extern "C"
-JNIEXPORT void JNICALL
-Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1stop_1record(JNIEnv *env, jobject thiz) {
-    LOG("stop record...");
+extern "C" JNIEXPORT void JNICALL
+Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1stop_1record(
+        JNIEnv* env,
+        jobject /* this */) {
     if (gRecorder) {
         gRecorder->stop();
         gRecorder.reset();
+    }
+    
+    // 释放全局引用
+    if (recorderViewModel != nullptr) {
+        env->DeleteGlobalRef(recorderViewModel);
+        recorderViewModel = nullptr;
     }
 }

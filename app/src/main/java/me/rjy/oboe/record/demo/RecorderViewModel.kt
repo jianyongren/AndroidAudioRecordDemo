@@ -12,6 +12,9 @@ import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Build
 import android.util.Log
+import androidx.annotation.Keep
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -28,6 +31,7 @@ import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.concurrent.Volatile
+import kotlin.math.abs
 
 
 class RecorderViewModel : ViewModel() {
@@ -43,10 +47,56 @@ class RecorderViewModel : ViewModel() {
     val pcmPlayingStatus = mutableStateOf(false)
     val echoCanceler = mutableStateOf(false)
     val isStereo = mutableStateOf(true)  // true为立体声,false为单声道
-    val sampleRate = mutableStateOf(48000) // 采样率选项
+    val sampleRate = mutableIntStateOf(48000) // 采样率选项
     val isFloat = mutableStateOf(false)  // true为float格式,false为short格式
     val useOboe = mutableStateOf(false)  // true使用oboe,false使用AudioRecord
-    val selectedAudioSource = mutableStateOf(MediaRecorder.AudioSource.DEFAULT) // 选中的音频源
+    val selectedAudioSource = mutableIntStateOf(MediaRecorder.AudioSource.DEFAULT) // 选中的音频源
+
+    // 波形数据，最多保存150个采样点
+    private val _waveformData = mutableStateOf<List<Float>>(emptyList())
+    val waveformData: State<List<Float>> = _waveformData
+
+    // 波形数据的最大采样点数，由View的宽度决定
+    private var maxWaveformPoints = 150
+
+    // 计算200ms对应的采样点数
+    private fun getSamplePoints(): Int {
+        return (currentSampleRate * 0.2).toInt()
+    }
+
+    // 计算一组采样的振幅
+    private fun calculateAmplitude(buffer: ByteBuffer, size: Int): Float {
+        var sum = 0.0f
+        val count = size / if (isStereo.value) 2 else 1
+        
+        if (isFloat.value) {
+            val floatBuffer = buffer.asFloatBuffer()
+            for (i in 0 until count) {
+                sum += abs(floatBuffer.get(i))
+            }
+        } else {
+            val shortBuffer = buffer.asShortBuffer()
+            for (i in 0 until count) {
+                sum += abs(shortBuffer.get(i) / 32768.0f)
+            }
+        }
+        
+        return sum / count
+    }
+
+    // 更新波形数据
+    private fun updateWaveform(amplitude: Float) {
+        Log.d(TAG, "updateWaveform called: amplitude=$amplitude")
+        viewModelScope.launch(Dispatchers.Main) {
+            val currentData = _waveformData.value.toMutableList()
+            currentData.add(0, amplitude)  // 在列表开头添加新数据
+            if (currentData.size > maxWaveformPoints) {
+                currentData.removeAt(currentData.size - 1)  // 移除最后一个数据点
+            }
+            _waveformData.value = currentData
+            Log.d(TAG, "Waveform updated: size=${currentData.size}, amplitude=$amplitude")
+        }
+    }
 
     // 音频源列表
     data class AudioSourceInfo(
@@ -77,7 +127,7 @@ class RecorderViewModel : ViewModel() {
     )
     val audioDevices = mutableStateOf<List<AudioDevice>>(emptyList())
 
-    private val currentSampleRate get() = sampleRate.value
+    private val currentSampleRate get() = sampleRate.intValue
     private val currentChannel get() = if(isStereo.value) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
     private val currentFormat get() = if(isFloat.value) AudioFormat.ENCODING_PCM_FLOAT else AudioFormat.ENCODING_PCM_16BIT
 
@@ -91,20 +141,20 @@ class RecorderViewModel : ViewModel() {
         val settings = PreferenceManager.loadSettings(context)
         useOboe.value = settings.useOboe
         isStereo.value = settings.isStereo
-        sampleRate.value = settings.sampleRate
+        sampleRate.intValue = settings.sampleRate
         isFloat.value = settings.isFloat
         echoCanceler.value = settings.echoCanceler
-        selectedAudioSource.value = settings.audioSource
+        selectedAudioSource.intValue = settings.audioSource
     }
 
     private fun saveSettings(context: Context) {
         val settings = RecorderSettings(
             useOboe = useOboe.value,
             isStereo = isStereo.value,
-            sampleRate = sampleRate.value,
+            sampleRate = sampleRate.intValue,
             isFloat = isFloat.value,
             echoCanceler = echoCanceler.value,
-            audioSource = selectedAudioSource.value
+            audioSource = selectedAudioSource.intValue
         )
         PreferenceManager.saveSettings(context, settings)
     }
@@ -126,7 +176,7 @@ class RecorderViewModel : ViewModel() {
     }
 
     fun setSampleRate(value: Int) {
-        sampleRate.value = value
+        sampleRate.intValue = value
         onSettingsChanged()
     }
 
@@ -141,7 +191,7 @@ class RecorderViewModel : ViewModel() {
     }
 
     fun setAudioSource(value: Int) {
-        selectedAudioSource.value = value
+        selectedAudioSource.intValue = value
         onSettingsChanged()
     }
 
@@ -196,6 +246,8 @@ class RecorderViewModel : ViewModel() {
         if (recordingStatus.value) {
             return
         }
+        // 重置波形数据
+        _waveformData.value = emptyList()
         recordingStatus.value = true
         recordedFilePath.value = pcmPath
         Log.d(TAG, "startRecord")
@@ -214,9 +266,10 @@ class RecorderViewModel : ViewModel() {
             currentChannel, 
             currentFormat
         )
+        Log.d(TAG, "startAudioRecord: bufferSize=$bufferSizeInBytes, sampleRate=$currentSampleRate")
 
         recorder = AudioRecord.Builder()
-            .setAudioSource(selectedAudioSource.value)
+            .setAudioSource(selectedAudioSource.intValue)
             .setAudioFormat(
                 AudioFormat.Builder()
                     .setSampleRate(currentSampleRate)
@@ -228,13 +281,14 @@ class RecorderViewModel : ViewModel() {
             .build()
 
         if (recorder?.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e("DemoRecorder", "AudioRecord init failed")
+            Log.e(TAG, "AudioRecord init failed")
             recordingStatus.value = false
             return
         }
         stopRecord = false
 
         viewModelScope.launch(newSingleThreadContext("record-thread")) {
+            Log.d(TAG, "Recording thread started")
             recorder?.startRecording()
 
             if (File(pcmPath).exists()) {
@@ -247,29 +301,81 @@ class RecorderViewModel : ViewModel() {
             val dos = DataOutputStream(bos)
 
             try {
+                var accumulatedSamples = 0
+                val samplesPerUpdate = (currentSampleRate * 0.02).toInt() // 每20ms更新一次
+                Log.d(TAG, "Recording loop started: samplesPerUpdate=$samplesPerUpdate")
+
                 while (!stopRecord) {
                     audioBuffer.clear()
                     val frameBytes = recorder?.read(audioBuffer, bufferSizeInBytes)
                     if (frameBytes != null && frameBytes > 0) {
+//                        Log.d(TAG, "read: ${frameBytes / (if (isFloat.value) 4.0 else 2.0) / currentSampleRate}")
+                        // 写入文件
                         if (isFloat.value) {
                             val floatBuffer = audioBuffer.asFloatBuffer()
                             val floatArray = FloatArray(frameBytes / 4)
                             floatBuffer.get(floatArray)
-                            // 直接写入float数据的字节
+
+                            // 写入文件
                             val byteBuffer = ByteBuffer.allocate(frameBytes)
                             byteBuffer.asFloatBuffer().put(floatArray)
                             dos.write(byteBuffer.array())
+
+                            accumulatedSamples += floatArray.size
                         } else {
+                            // 写入文件
                             for (i in 0 until frameBytes) {
                                 dos.writeByte(audioBuffer[i].toInt())
                             }
+
+                            accumulatedSamples += (frameBytes / 2)
                         }
+
+                        // 每收集到足够的样本就更新一次波形
+                        if (accumulatedSamples >= samplesPerUpdate) {
+                            // 计算这一帧数据中的最大振幅值
+                            val amplitude = if (isFloat.value) {
+                                var maxAbsAmplitude = 0.0
+                                var maxAmplitude = 0.0
+                                // 使用ByteBuffer正确解析float数据
+                                val byteBuffer = ByteBuffer.wrap(audioBuffer.array(), 0, frameBytes)
+                                    .order(ByteOrder.LITTLE_ENDIAN)
+                                val floatBuffer = byteBuffer.asFloatBuffer()
+                                val floatArray = FloatArray(frameBytes / 4)
+                                floatBuffer.get(floatArray)
+                                
+                                // 计算最大振幅，保留正负号
+                                for (sample in floatArray) {
+                                    val absValue = abs(sample.toDouble())
+                                    if (absValue > maxAbsAmplitude) {
+                                        maxAbsAmplitude = absValue
+                                        maxAmplitude = sample.toDouble()
+                                    }
+                                }
+                                // 对float格式的数据进行放大，使其更容易看到波形
+                                maxAmplitude //* 10.0
+                            } else {
+                                val shortBuffer = audioBuffer.asShortBuffer()
+                                shortBuffer.get(frameBytes / 2 - 1) / 32768.0
+                            }
+                            
+                            // 将振幅限制在-1到1范围内，以防万一有超出范围的值
+                            val normalizedAmplitude = amplitude.coerceIn(-1.0, 1.0)
+                            
+//                            Log.d(TAG, "Updating waveform: raw amplitude=$amplitude, normalized=$normalizedAmplitude, isFloat=${isFloat.value}")
+                            updateWaveform(normalizedAmplitude.toFloat())
+                            
+                            // 重置状态
+                            accumulatedSamples = 0
+                        }
+                    } else {
+                        Log.w(TAG, "No data read from AudioRecord: frameBytes=$frameBytes")
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "cache exception $e")
-                e.printStackTrace()
+                Log.e(TAG, "Recording exception", e)
             } finally {
+                Log.d(TAG, "Recording stopped")
                 dos.flush()
                 dos.close()
                 bos.close()
@@ -277,6 +383,7 @@ class RecorderViewModel : ViewModel() {
                 recorder?.release()
                 mediaPlayer?.release()
                 recordingStatus.value = false
+                _waveformData.value = emptyList()
             }
         }
     }
@@ -301,14 +408,18 @@ class RecorderViewModel : ViewModel() {
                     isStereo.value,
                     isFloat.value,
                     selectedDeviceId.value,
-                    selectedAudioSource.value
+                    selectedAudioSource.intValue
                 )
                 if (!ret) {
                     recordingStatus.value = false
+                    // 重置波形数据
+                    _waveformData.value = emptyList()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Oboe record failed", e)
                 recordingStatus.value = false
+                // 重置波形数据
+                _waveformData.value = emptyList()
             }
         }
     }
@@ -318,6 +429,8 @@ class RecorderViewModel : ViewModel() {
         if (useOboe.value) {
             native_stop_record()
             recordingStatus.value = false
+            // 重置波形数据
+            _waveformData.value = emptyList()
         }
     }
 
@@ -425,9 +538,32 @@ class RecorderViewModel : ViewModel() {
 
     fun generateRecordFileName(): String {
         val channelStr = if (isStereo.value) "stereo" else "mono"
-        val sampleRateStr = "${sampleRate.value/1000}kHz"
+        val sampleRateStr = "${sampleRate.intValue/1000}kHz"
         val formatStr = if (isFloat.value) "float" else "short"
         return "record_${channelStr}_${sampleRateStr}_${formatStr}.pcm"
+    }
+
+    // 供native层调用的方法，用于更新波形数据
+    @Keep
+    private fun updateWaveformFromNative(amplitude: Float) {
+        Log.d(TAG, "updateWaveformFromNative: amplitude=$amplitude")
+        viewModelScope.launch(Dispatchers.Main) {
+            val currentData = _waveformData.value.toMutableList()
+            currentData.add(0, amplitude)  // 在列表开头添加新数据
+            if (currentData.size > maxWaveformPoints) {
+                currentData.removeAt(currentData.size - 1)  // 移除最后一个数据点
+            }
+            _waveformData.value = currentData
+            Log.d(TAG, "Waveform updated from native: size=${currentData.size}, amplitude=$amplitude")
+        }
+    }
+
+    fun setMaxWaveformPoints(points: Int) {
+        maxWaveformPoints = points
+        // 如果当前数据点数超过新的最大值，需要裁剪
+        if (_waveformData.value.size > points) {
+            _waveformData.value = _waveformData.value.takeLast(points)
+        }
     }
 
     companion object {

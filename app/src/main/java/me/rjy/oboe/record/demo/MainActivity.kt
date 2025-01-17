@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import me.rjy.oboe.record.demo.ui.theme.OboeRecordDemoTheme
 import java.io.File
+import me.rjy.oboe.record.demo.ui.WaveformView
 
 class MainActivity : ComponentActivity() {
 
@@ -193,43 +195,60 @@ class MainActivity : ComponentActivity() {
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                             color = MaterialTheme.colorScheme.surface
                         ) {
-                            Row(
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                modifier = Modifier.padding(16.dp)
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Button(
-                                    onClick = { 
-                                        if (viewModel.recordingStatus.value) {
-                                            viewModel.stopRecord()
-                                        } else {
-                                            startRecord()
-                                        }
-                                    },
-                                    enabled = !viewModel.pcmPlayingStatus.value
+                                // 波形图
+                                WaveformView(
+                                    waveformData = viewModel.waveformData.value,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp),
+                                    onMaxPointsCalculated = { points ->
+                                        viewModel.setMaxWaveformPoints(points)
+                                    }
+                                )
+
+                                // 按钮
+                                Row(
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text(text = if (viewModel.recordingStatus.value) "停止录制" else "开始录制")
-                                }
-                                
-                                Button(
-                                    onClick = {
-                                        if (viewModel.pcmPlayingStatus.value) {
-                                            viewModel.stopPcm()
-                                        } else {
-                                            val pcmFile = getRecordFilePath()
-                                            if (File(pcmFile).exists()) {
-                                                viewModel.playPcm(getRecordFilePath())
+                                    Button(
+                                        onClick = { 
+                                            if (viewModel.recordingStatus.value) {
+                                                viewModel.stopRecord()
                                             } else {
-                                                Toast.makeText(
-                                                    this@MainActivity,
-                                                    R.string.file_not_exists,
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                                startRecord()
                                             }
-                                        }
-                                    },
-                                    enabled = !viewModel.recordingStatus.value
-                                ) {
-                                    Text(text = if (viewModel.pcmPlayingStatus.value) "停止播放" else "播放PCM")
+                                        },
+                                        enabled = !viewModel.pcmPlayingStatus.value
+                                    ) {
+                                        Text(text = if (viewModel.recordingStatus.value) "停止录制" else "开始录制")
+                                    }
+                                    
+                                    Button(
+                                        onClick = {
+                                            if (viewModel.pcmPlayingStatus.value) {
+                                                viewModel.stopPcm()
+                                            } else {
+                                                val pcmFile = getRecordFilePath()
+                                                if (File(pcmFile).exists()) {
+                                                    viewModel.playPcm(getRecordFilePath())
+                                                } else {
+                                                    Toast.makeText(
+                                                        this@MainActivity,
+                                                        R.string.file_not_exists,
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        },
+                                        enabled = !viewModel.recordingStatus.value
+                                    ) {
+                                        Text(text = if (viewModel.pcmPlayingStatus.value) "停止播放" else "播放PCM")
+                                    }
                                 }
                             }
                         }
