@@ -479,7 +479,7 @@ private fun RecordDeviceSection(viewModel: RecorderViewModel) {
                     DropdownMenuItem(
                         text = { Text(device.name) },
                         onClick = {
-                            viewModel.selectedDeviceId.value = device.id
+                            viewModel.setSelectedDeviceId(device.id)
                             expanded = false
                         }
                     )

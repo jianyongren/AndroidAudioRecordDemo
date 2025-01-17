@@ -164,33 +164,51 @@ class RecorderViewModel : ViewModel() {
         saveSettings(App.context)
     }
 
-    // 修改现有的状态设置方法，添加保存功能
+    // 修改现有的状态设置方法，添加录制状态检查
     fun setUseOboe(value: Boolean) {
+        if (recordingStatus.value) {
+            return
+        }
         useOboe.value = value
         onSettingsChanged()
     }
 
     fun setIsStereo(value: Boolean) {
+        if (recordingStatus.value) {
+            return
+        }
         isStereo.value = value
         onSettingsChanged()
     }
 
     fun setSampleRate(value: Int) {
+        if (recordingStatus.value) {
+            return
+        }
         sampleRate.intValue = value
         onSettingsChanged()
     }
 
     fun setIsFloat(value: Boolean) {
+        if (recordingStatus.value) {
+            return
+        }
         isFloat.value = value
         onSettingsChanged()
     }
 
     fun setEchoCanceler(value: Boolean) {
+        if (recordingStatus.value) {
+            return
+        }
         echoCanceler.value = value
         onSettingsChanged()
     }
 
     fun setAudioSource(value: Int) {
+        if (recordingStatus.value) {
+            return
+        }
         selectedAudioSource.intValue = value
         onSettingsChanged()
     }
@@ -564,6 +582,13 @@ class RecorderViewModel : ViewModel() {
         if (_waveformData.value.size > points) {
             _waveformData.value = _waveformData.value.takeLast(points)
         }
+    }
+
+    fun setSelectedDeviceId(value: Int) {
+        if (recordingStatus.value) {
+            return
+        }
+        selectedDeviceId.value = value
     }
 
     companion object {
