@@ -39,8 +39,6 @@ private:
     int32_t sampleRate;
     bool isStereo;
     int32_t samplesPerFrame;
-    int32_t accumulatedSamples = 0;
-    int32_t samplesPerUpdate;
     int32_t deviceId;
     int32_t audioSource;
     int32_t audioApi;
@@ -91,7 +89,7 @@ private:
 
 public:
     OboeRecorder(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat,
-                int32_t deviceId, int32_t audioSource, int32_t audioApi, int32_t sampleUpdatePeriodMs)
+                int32_t deviceId, int32_t audioSource, int32_t audioApi)
         : writer(std::make_unique<DataWriter>(filePath))
         , isFloat(isFloat)
         , sampleRate(sampleRate)
@@ -100,8 +98,6 @@ public:
         , deviceId(deviceId)
         , audioSource(audioSource)
         , audioApi(audioApi) {
-        // 计算每次更新所需的采样点数
-        samplesPerUpdate = (sampleRate * sampleUpdatePeriodMs) / 1000;
     }
 
     oboe::DataCallbackResult onAudioReady(
@@ -113,13 +109,8 @@ public:
         size_t totalBytes = numFrames * samplesPerFrame * bytesPerSample;
         writer->write(audioData, totalBytes);
 
-        // 累积采样点数
-        accumulatedSamples += numFrames;
-        if (accumulatedSamples >= samplesPerUpdate) {
-            // 发送数据到Java层进行波形计算
-            sendAudioDataToJava(audioData, numFrames);
-            accumulatedSamples = 0;
-        }
+        // 发送数据到Java层进行波形计算
+        sendAudioDataToJava(audioData, numFrames);
 
         return oboe::DataCallbackResult::Continue;
     }
@@ -201,14 +192,13 @@ Java_me_rjy_oboe_record_demo_RecorderViewModel_native_1start_1record(
         jboolean isFloat,
         jint deviceId,
         jint audioSource,
-        jint audioApi,
-        jint sampleUpdatePeriodMs) {
+        jint audioApi) {
     // 保存RecorderViewModel的全局引用
     recorderViewModel = env->NewGlobalRef(thiz);
     
     const char* str = env->GetStringUTFChars(path, nullptr);
     gRecorder = std::make_unique<OboeRecorder>(str, sampleRate, isStereo, isFloat, deviceId, 
-                                              audioSource, audioApi, sampleUpdatePeriodMs);
+                                              audioSource, audioApi);
     env->ReleaseStringUTFChars(path, str);
 
     return gRecorder->start();

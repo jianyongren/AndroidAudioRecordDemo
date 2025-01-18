@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
@@ -65,20 +66,19 @@ class RecorderViewModel : ViewModel() {
     // 更新振幅计算策略
     private fun updateAmplitudeCalculator() {
         amplitudeCalculator = when {
-            isFloat.value && isStereo.value -> FloatStereoAmplitudeCalculator()
-            isFloat.value && !isStereo.value -> FloatMonoAmplitudeCalculator()
-            !isFloat.value && isStereo.value -> ShortStereoAmplitudeCalculator()
-            else -> ShortMonoAmplitudeCalculator()
+            isFloat.value && isStereo.value -> FloatStereoAmplitudeCalculator(samplesPerUpdate)
+            isFloat.value && !isStereo.value -> FloatMonoAmplitudeCalculator(samplesPerUpdate)
+            !isFloat.value && isStereo.value -> ShortStereoAmplitudeCalculator(samplesPerUpdate)
+            else -> ShortMonoAmplitudeCalculator(samplesPerUpdate)
         }
     }
 
     // 计算一组采样的振幅
-    private fun calculateAmplitude(buffer: ByteBuffer, size: Int): Pair<Float, Float?> {
+    private fun calculateAmplitude(buffer: ByteBuffer, size: Int, callback: (Float, Float?)->Unit) {
         if (amplitudeCalculator == null) {
             updateAmplitudeCalculator()
         }
-        return amplitudeCalculator?.calculateAmplitude(buffer, size)
-            ?: Pair(0f, null)
+        amplitudeCalculator?.calculateAmplitude(buffer, size, callback)
     }
 
     // 音频源列表
@@ -286,6 +286,7 @@ class RecorderViewModel : ViewModel() {
         }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     @SuppressLint("MissingPermission")
     private fun startAudioRecord(pcmPath: String) {
         val bufferSizeInBytes = AudioRecord.getMinBufferSize(
@@ -332,7 +333,6 @@ class RecorderViewModel : ViewModel() {
 
             try {
                 var accumulatedSamples = 0
-                val samplesPerUpdate = (currentSampleRate * (SAMPLE_UPDATE_PERIOD_MS / 1000.0)).toInt() // 每20ms更新一次
                 Log.d(TAG, "Recording loop started: samplesPerUpdate=$samplesPerUpdate")
 
                 while (!stopRecord) {
@@ -360,26 +360,13 @@ class RecorderViewModel : ViewModel() {
                             accumulatedSamples += (frameBytes / 2)
                         }
 
-                        // 每收集到足够的样本就更新一次波形
-                        if (accumulatedSamples >= samplesPerUpdate) {
-                            // 计算这一帧数据中的振幅值
-                            audioBuffer.position(0)
-                            val amplitudes = calculateAmplitude(audioBuffer, frameBytes)
-                            
-                            if (isStereo.value) {
-                                // 立体声：更新左右声道数据
-                                _leftChannelData.value = (listOf(amplitudes.first) + _leftChannelData.value).take(maxWaveformPoints)
-                                amplitudes.second?.let { rightAmplitude ->
-                                    _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
-                                }
-                            } else {
-                                // 单声道：左右声道使用相同数据
-                                _leftChannelData.value = (listOf(amplitudes.first) + _leftChannelData.value).take(maxWaveformPoints)
-                                _rightChannelData.value = _leftChannelData.value
+                        // 计算这一帧数据中的振幅值
+                        audioBuffer.position(0)
+                        calculateAmplitude(audioBuffer, frameBytes) { leftAmplitude, rightAmplitude ->
+                            _leftChannelData.value = (listOf(leftAmplitude) + _leftChannelData.value).take(maxWaveformPoints)
+                            if (rightAmplitude != null) {
+                                _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
                             }
-                            
-                            // 重置状态
-                            accumulatedSamples = 0
                         }
                     } else {
                         Log.w(TAG, "No data read from AudioRecord: frameBytes=$frameBytes")
@@ -400,6 +387,9 @@ class RecorderViewModel : ViewModel() {
         }
     }
 
+    private val samplesPerUpdate: Int
+        get() = (currentSampleRate * (SAMPLE_UPDATE_PERIOD_MS / 1000.0)).toInt()
+
     private external fun native_start_record(
         path: String,
         sampleRate: Int,
@@ -408,10 +398,10 @@ class RecorderViewModel : ViewModel() {
         deviceId: Int,
         audioSource: Int,
         audioApi: Int,
-        sampleUpdatePeriodMs: Int
     ): Boolean
     private external fun native_stop_record()
 
+    @OptIn(DelicateCoroutinesApi::class)
     private fun startOboeRecord(pcmPath: String) {
         stopRecord = false
         viewModelScope.launch(newSingleThreadContext("oboe-record-thread")) {
@@ -424,7 +414,6 @@ class RecorderViewModel : ViewModel() {
                     selectedDeviceId.intValue,
                     selectedAudioSource.intValue,
                     selectedAudioApi.intValue,
-                    SAMPLE_UPDATE_PERIOD_MS
                 )
                 // 初始化失败时清空波形数据
                 _leftChannelData.value = emptyList()
@@ -459,6 +448,7 @@ class RecorderViewModel : ViewModel() {
         }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     fun playPcm(pcmPath: String) {
         Log.d(TAG, "playPcm $pcmPath")
         // 设置系统音量为80%
@@ -561,19 +551,12 @@ class RecorderViewModel : ViewModel() {
     @Keep
     private fun onAudioData(audioData: ByteArray, size: Int) {
         val buffer = ByteBuffer.wrap(audioData)
-        val amplitudes = calculateAmplitude(buffer, size)
-        
         viewModelScope.launch(Dispatchers.Main) {
-            if (isStereo.value) {
-                // 立体声：更新左右声道数据
-                _leftChannelData.value = (listOf(amplitudes.first) + _leftChannelData.value).take(maxWaveformPoints)
-                amplitudes.second?.let { rightAmplitude ->
+            calculateAmplitude(buffer, size) { leftAmplitude, rightAmplitude ->
+                _leftChannelData.value = (listOf(leftAmplitude) + _leftChannelData.value).take(maxWaveformPoints)
+                if (rightAmplitude != null) {
                     _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
                 }
-            } else {
-                // 单声道：左右声道使用相同数据
-                _leftChannelData.value = (listOf(amplitudes.first) + _leftChannelData.value).take(maxWaveformPoints)
-                _rightChannelData.value = _leftChannelData.value
             }
         }
     }
