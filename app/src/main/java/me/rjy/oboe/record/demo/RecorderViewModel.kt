@@ -575,6 +575,6 @@ class RecorderViewModel : ViewModel() {
     companion object {
         private const val TAG = "RecorderViewModel"
         // 声音波形展示采样周期，单位：毫秒
-        const val SAMPLE_UPDATE_PERIOD_MS = 20
+        const val SAMPLE_UPDATE_PERIOD_MS = 10
     }
 }

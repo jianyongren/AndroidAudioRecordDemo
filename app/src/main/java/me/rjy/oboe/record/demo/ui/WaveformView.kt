@@ -52,7 +52,7 @@ fun WaveformView(
         val centerY = height / 2
 
         // 固定每个采样点之间的间距为2dp
-        val pointSpacing = 2.dp.toPx()
+        val pointSpacing = 1.dp.toPx()
         // 计算最大可显示的采样点数
         maxPoints = (width / pointSpacing).toInt()
 
