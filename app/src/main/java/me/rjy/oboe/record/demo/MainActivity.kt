@@ -97,10 +97,10 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background
                 ) {
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(11.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .padding(16.dp)
+                            .padding(11.dp)
                             .verticalScroll(rememberScrollState())
                     ) {
                         // 录音参数控制部分
@@ -111,8 +111,8 @@ class MainActivity : ComponentActivity() {
                             color = MaterialTheme.colorScheme.surface
                         ) {
                             Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                modifier = Modifier.padding(11.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
                                     text = "录音参数设置",
@@ -120,7 +120,7 @@ class MainActivity : ComponentActivity() {
                                     color = MaterialTheme.colorScheme.primary
                                 )
                                 
-                                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                                Divider(modifier = Modifier.padding(vertical = 6.dp))
 
                                 val configuration = LocalConfiguration.current
                                 if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
@@ -132,7 +132,7 @@ class MainActivity : ComponentActivity() {
                                         // 左列
                                         Column(
                                             modifier = Modifier.weight(1f),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             // 录音方式设置
                                             RecordMethodSection(viewModel)
@@ -145,7 +145,7 @@ class MainActivity : ComponentActivity() {
                                         // 右列
                                         Column(
                                             modifier = Modifier.weight(1f),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             // 声道设置
                                             ChannelSection(viewModel)
@@ -161,7 +161,7 @@ class MainActivity : ComponentActivity() {
                                     // 竖屏布局：单列
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         // 录音方式设置
                                         RecordMethodSection(viewModel)
@@ -195,13 +195,13 @@ class MainActivity : ComponentActivity() {
                             color = MaterialTheme.colorScheme.surface
                         ) {
                             Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                                modifier = Modifier.padding(11.dp),
+                                verticalArrangement = Arrangement.spacedBy(11.dp)
                             ) {
                                 if (viewModel.isStereo.value) {
                                     // 立体声模式：显示两个波形图
                                     Column(
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         // 左声道波形
                                         Text(
@@ -300,7 +300,7 @@ class MainActivity : ComponentActivity() {
                                 color = MaterialTheme.colorScheme.surface
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(16.dp)
+                                    modifier = Modifier.padding(11.dp)
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -316,7 +316,7 @@ class MainActivity : ComponentActivity() {
                                             Text(
                                                 text = path,
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                modifier = Modifier.padding(top = 4.dp)
+                                                modifier = Modifier.padding(top = 3.dp)
                                             )
                                         }
                                         IconButton(onClick = {
