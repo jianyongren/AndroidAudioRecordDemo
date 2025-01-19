@@ -26,7 +26,7 @@ project("demo")
 # used in the AndroidManifest.xml file.
 add_library(${CMAKE_PROJECT_NAME} SHARED
     # List C/C++ source files with relative paths to this CMakeLists.txt.
-        demo_jni.cpp)
+        demo_jni.cpp oboe_recorder.cpp ring_buffer.cpp data_writer.cpp)
 
 # Find the Oboe package
 find_package (oboe REQUIRED CONFIG)
