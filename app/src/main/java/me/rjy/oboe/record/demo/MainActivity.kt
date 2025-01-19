@@ -154,7 +154,7 @@ class MainActivity : ComponentActivity() {
                                             // 数据格式设置
                                             DataFormatSection(viewModel)
                                             // 回声消除设置
-                                            EchoCancelSection(viewModel)
+//                                            EchoCancelSection(viewModel)
                                         }
                                     }
                                 } else {
@@ -176,7 +176,7 @@ class MainActivity : ComponentActivity() {
                                         // 数据格式设置
                                         DataFormatSection(viewModel)
                                         // 回声消除设置
-                                        EchoCancelSection(viewModel)
+//                                        EchoCancelSection(viewModel)
                                     }
                                 }
 
