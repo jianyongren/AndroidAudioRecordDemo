@@ -20,6 +20,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.withContext
@@ -31,6 +32,7 @@ import java.io.FileOutputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.Executors
 import kotlin.concurrent.Volatile
 
 class RecorderViewModel : ViewModel() {
@@ -318,50 +320,62 @@ class RecorderViewModel : ViewModel() {
         }
         stopRecord = false
 
-        viewModelScope.launch(newSingleThreadContext("record-thread")) {
-            Log.d(TAG, "Recording thread started")
-            recorder?.startRecording()
-
-            if (File(pcmPath).exists()) {
-                File(pcmPath).delete()
+        // 创建一个单线程调度器并设置线程优先级
+        val singleThreadDispatcher = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable).apply {
+                name = "RecordThread"
+                priority = Thread.MAX_PRIORITY // 设置线程优先级为最高
             }
+        }.asCoroutineDispatcher()
 
-            val audioBuffer = ByteBuffer.allocateDirect(bufferSizeInBytes)
-            val os: OutputStream = FileOutputStream(pcmPath)
-            val bos = BufferedOutputStream(os)
-            val dos = DataOutputStream(bos)
+        viewModelScope.launch(/*newSingleThreadContext("record-thread")*/) {
+            withContext(singleThreadDispatcher) {
+                Log.d(TAG, "Recording thread started")
+                recorder?.startRecording()
 
-            try {
-                Log.d(TAG, "Recording loop started: samplesPerUpdate=$samplesPerUpdate")
-
-                while (!stopRecord) {
-                    val frameBytes = recorder?.read(audioBuffer, bufferSizeInBytes)
-                    if (frameBytes != null && frameBytes > 0) {
-                        dos.write(audioBuffer.array(), 0, frameBytes)
-
-                        // 计算这一帧数据中的振幅值
-                        calculateAmplitude(audioBuffer, frameBytes) { leftAmplitude, rightAmplitude ->
-                            _leftChannelData.value = (listOf(leftAmplitude) + _leftChannelData.value).take(maxWaveformPoints)
-                            if (rightAmplitude != null) {
-                                _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
-                            }
-                        }
-                    } else {
-                        Log.w(TAG, "No data read from AudioRecord: frameBytes=$frameBytes")
-                    }
+                if (File(pcmPath).exists()) {
+                    File(pcmPath).delete()
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Recording exception", e)
-            } finally {
-                Log.d(TAG, "Recording stopped")
-                dos.flush()
-                dos.close()
-                bos.close()
-                os.close()
-                recorder?.release()
-                mediaPlayer?.release()
-                recordingStatus.value = false
+
+                val audioBuffer = ByteBuffer.allocateDirect(bufferSizeInBytes)
+                val os: OutputStream = FileOutputStream(pcmPath)
+                val bos = BufferedOutputStream(os)
+                val dos = DataOutputStream(bos)
+
+                try {
+                    Log.d(TAG, "Recording loop started: samplesPerUpdate=$samplesPerUpdate")
+
+                    while (!stopRecord) {
+                        val frameBytes = recorder?.read(audioBuffer, bufferSizeInBytes)
+                        if (frameBytes != null && frameBytes > 0) {
+                            dos.write(audioBuffer.array(), 0, frameBytes)
+
+                            // 计算这一帧数据中的振幅值
+                            calculateAmplitude(audioBuffer, frameBytes) { leftAmplitude, rightAmplitude ->
+                                _leftChannelData.value = (listOf(leftAmplitude) + _leftChannelData.value).take(maxWaveformPoints)
+                                if (rightAmplitude != null) {
+                                    _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
+                                }
+                            }
+                        } else {
+                            Log.w(TAG, "No data read from AudioRecord: frameBytes=$frameBytes")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Recording exception", e)
+                } finally {
+                    Log.d(TAG, "Recording stopped")
+                    dos.flush()
+                    dos.close()
+                    bos.close()
+                    os.close()
+                    recorder?.release()
+                    mediaPlayer?.release()
+                    recordingStatus.value = false
+                }
             }
+        }.invokeOnCompletion {
+            singleThreadDispatcher.close()
         }
     }
 
