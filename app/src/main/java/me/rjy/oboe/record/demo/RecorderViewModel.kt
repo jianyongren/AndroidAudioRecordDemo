@@ -338,21 +338,9 @@ class RecorderViewModel : ViewModel() {
                     audioBuffer.clear()
                     val frameBytes = recorder?.read(audioBuffer, bufferSizeInBytes)
                     if (frameBytes != null && frameBytes > 0) {
-                        // 写入文件
-                        if (isFloat.value) {
-                            // 直接写入原始数据
-                            for (i in 0 until frameBytes) {
-                                dos.writeByte(audioBuffer[i].toInt())
-                            }
-                        } else {
-                            // 写入文件
-                            for (i in 0 until frameBytes) {
-                                dos.writeByte(audioBuffer[i].toInt())
-                            }
-                        }
+                        dos.write(audioBuffer.array(), 0, frameBytes)
 
                         // 计算这一帧数据中的振幅值
-                        audioBuffer.position(0)
                         calculateAmplitude(audioBuffer, frameBytes) { leftAmplitude, rightAmplitude ->
                             _leftChannelData.value = (listOf(leftAmplitude) + _leftChannelData.value).take(maxWaveformPoints)
                             if (rightAmplitude != null) {
