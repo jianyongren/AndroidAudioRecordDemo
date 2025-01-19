@@ -24,34 +24,93 @@ OboeRecorder::OboeRecorder(const char* filePath, int32_t sampleRate, bool isSter
     , audioSource(audioSource)
     , audioApi(audioApi)
     , ringBuffer_(std::make_unique<RingBuffer>(BUFFER_CAPACITY))
-    , isRunning_(false) {
+    , isRunning_(false)
+    , cachedEnv_(nullptr)
+    , audioDataArray_(nullptr)
+    , audioDataArraySize_(0) {
 }
 
 OboeRecorder::~OboeRecorder() {
     stop();
 }
 
-void OboeRecorder::sendAudioDataToJava(const void* audioData, int32_t numFrames) {
-    JNIEnv *env;
-    if (javaVm->AttachCurrentThread(&env, nullptr) == JNI_OK) {
-        size_t bytesPerSample = isFloat ? sizeof(float) : sizeof(int16_t);
-        size_t channelCount = isStereo ? 2 : 1;
-        size_t totalBytes = numFrames * channelCount * bytesPerSample;
+void OboeRecorder::initJniEnv() {
+    if (javaVm->AttachCurrentThread(&cachedEnv_, nullptr) != JNI_OK) {
+        LOG("Failed to attach thread to JVM");
+        return;
+    }
+    consumerThreadId_ = std::this_thread::get_id();
+}
 
-        jbyteArray audioArray = env->NewByteArray(totalBytes);
-        env->SetByteArrayRegion(audioArray, 0, totalBytes, 
-                              static_cast<const jbyte*>(audioData));
-
-        env->CallVoidMethod(recorderViewModel, onAudioDataMethodId, 
-                          audioArray, static_cast<jint>(totalBytes));
-
-        env->DeleteLocalRef(audioArray);
+void OboeRecorder::cleanupJniEnv() {
+    if (std::this_thread::get_id() == consumerThreadId_) {
+        cleanupAudioDataArray();
         javaVm->DetachCurrentThread();
+        cachedEnv_ = nullptr;
     }
 }
 
+void OboeRecorder::initAudioDataArray(size_t initialSize) {
+
+    audioDataArraySize_ = initialSize;
+    jbyteArray localArray = cachedEnv_->NewByteArray(initialSize);
+    if (localArray) {
+        audioDataArray_ = cachedEnv_->NewWeakGlobalRef(localArray);
+        cachedEnv_->DeleteLocalRef(localArray);
+    }
+}
+
+void OboeRecorder::cleanupAudioDataArray() {
+    if (cachedEnv_ && audioDataArray_) {
+        cachedEnv_->DeleteWeakGlobalRef(audioDataArray_);
+        audioDataArray_ = nullptr;
+        audioDataArraySize_ = 0;
+    }
+}
+
+void OboeRecorder::ensureAudioDataArrayCapacity(size_t requiredSize) {
+    if (audioDataArraySize_ < requiredSize) {
+        // 如果需要更大的缓冲区，创建新的数组
+        cleanupAudioDataArray();
+        initAudioDataArray(requiredSize);
+    }
+}
+
+void OboeRecorder::sendAudioDataToJava(const void* audioData, int32_t numFrames) {
+    size_t bytesPerSample = isFloat ? sizeof(float) : sizeof(int16_t);
+    size_t channelCount = isStereo ? 2 : 1;
+    size_t totalBytes = numFrames * channelCount * bytesPerSample;
+
+    // 确保数组大小足够
+    ensureAudioDataArrayCapacity(totalBytes);
+    if (!audioDataArray_) return;
+
+    // 获取全局引用对应的局部引用
+    auto localArray = static_cast<jbyteArray>(
+        cachedEnv_->NewLocalRef(audioDataArray_));
+    if (!localArray) return;
+
+    // 复制数据
+    cachedEnv_->SetByteArrayRegion(localArray, 0, totalBytes, 
+                                  static_cast<const jbyte*>(audioData));
+
+    // 回调Java方法
+    cachedEnv_->CallVoidMethod(recorderViewModel, onAudioDataMethodId, 
+                              localArray, static_cast<jint>(totalBytes));
+
+    // 删除局部引用
+    cachedEnv_->DeleteLocalRef(localArray);
+}
+
 void OboeRecorder::consumerThreadFunc() {
-    std::vector<uint8_t> tempBuffer(16 * 1024); // 16KB的临时缓冲区
+    // 初始化JNI环境
+    initJniEnv();
+    if (!cachedEnv_) return;
+
+    // 初始化一个合理大小的音频数据数组
+    initAudioDataArray(16 * 1024);  // 16KB初始大小
+
+    std::vector<uint8_t> tempBuffer(16 * 1024);
 
     while (isRunning_) {
         std::unique_lock<std::mutex> lock(mutex_);
@@ -72,6 +131,9 @@ void OboeRecorder::consumerThreadFunc() {
             }
         }
     }
+
+    // 清理JNI环境
+    cleanupJniEnv();
 }
 
 oboe::DataCallbackResult OboeRecorder::onAudioReady(
@@ -155,8 +217,8 @@ oboe::InputPreset OboeRecorder::getInputPreset(int32_t audioSource) {
     }
 }
 
-oboe::AudioApi OboeRecorder::getAudioApi(int32_t audioApi) {
-    switch (audioApi) {
+oboe::AudioApi OboeRecorder::getAudioApi(int32_t api) {
+    switch (api) {
         case 1: return oboe::AudioApi::AAudio;
         case 2: return oboe::AudioApi::OpenSLES;
         default: return oboe::AudioApi::Unspecified;

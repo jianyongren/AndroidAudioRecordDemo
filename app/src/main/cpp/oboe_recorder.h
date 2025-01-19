@@ -73,6 +73,39 @@ private:
     std::condition_variable dataReady_;
     std::atomic<bool> isRunning_;
 
+    // JNI相关优化
+    JNIEnv* cachedEnv_;                  // 缓存的JNI环境
+    std::thread::id consumerThreadId_;    // 消费者线程ID
+    jweak audioDataArray_;               // 复用的音频数据数组
+    size_t audioDataArraySize_;          // 当前数组大小
+
+    /**
+     * @brief 初始化JNI环境
+     */
+    void initJniEnv();
+
+    /**
+     * @brief 清理JNI环境
+     */
+    void cleanupJniEnv();
+
+    /**
+     * @brief 初始化音频数据数组
+     * @param initialSize 初始大小
+     */
+    void initAudioDataArray(size_t initialSize);
+
+    /**
+     * @brief 清理音频数据数组
+     */
+    void cleanupAudioDataArray();
+
+    /**
+     * @brief 确保音频数据数组足够大
+     * @param requiredSize 需要的大小
+     */
+    void ensureAudioDataArrayCapacity(size_t requiredSize);
+
     /**
      * @brief 发送音频数据到Java层
      */
@@ -86,12 +119,12 @@ private:
     /**
      * @brief 获取输入预设
      */
-    oboe::InputPreset getInputPreset(int32_t audioSource);
+    static oboe::InputPreset getInputPreset(int32_t audioSource);
 
     /**
      * @brief 获取音频API
      */
-    oboe::AudioApi getAudioApi(int32_t audioApi);
+    static oboe::AudioApi getAudioApi(int32_t api);
 };
 
 #endif // OBOE_RECORDER_H 
