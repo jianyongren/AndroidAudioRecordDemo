@@ -332,7 +332,6 @@ class RecorderViewModel : ViewModel() {
             val dos = DataOutputStream(bos)
 
             try {
-                var accumulatedSamples = 0
                 Log.d(TAG, "Recording loop started: samplesPerUpdate=$samplesPerUpdate")
 
                 while (!stopRecord) {
@@ -341,23 +340,15 @@ class RecorderViewModel : ViewModel() {
                     if (frameBytes != null && frameBytes > 0) {
                         // 写入文件
                         if (isFloat.value) {
-                            val floatBuffer = audioBuffer.asFloatBuffer()
-                            val floatArray = FloatArray(frameBytes / 4)
-                            floatBuffer.get(floatArray)
-
-                            // 写入文件
-                            val byteBuffer = ByteBuffer.allocate(frameBytes)
-                            byteBuffer.asFloatBuffer().put(floatArray)
-                            dos.write(byteBuffer.array())
-
-                            accumulatedSamples += floatArray.size
+                            // 直接写入原始数据
+                            for (i in 0 until frameBytes) {
+                                dos.writeByte(audioBuffer[i].toInt())
+                            }
                         } else {
                             // 写入文件
                             for (i in 0 until frameBytes) {
                                 dos.writeByte(audioBuffer[i].toInt())
                             }
-
-                            accumulatedSamples += (frameBytes / 2)
                         }
 
                         // 计算这一帧数据中的振幅值
@@ -499,8 +490,9 @@ class RecorderViewModel : ViewModel() {
 //                Log.d(TAG, "play pcm read: $count")
                 if (count > 0) {
                     val ret = if (isFloat.value) {
-                        // 对float格式的数据进行处理
-                        val byteBuffer = ByteBuffer.wrap(buffer, 0, count).order(ByteOrder.LITTLE_ENDIAN)
+                        // 直接读取float格式的数据
+                        val byteBuffer = ByteBuffer.wrap(buffer, 0, count)
+                            .order(ByteOrder.LITTLE_ENDIAN)
                         val floatBuffer = byteBuffer.asFloatBuffer()
                         val floatArray = FloatArray(count / 4)
                         floatBuffer.get(floatArray)
