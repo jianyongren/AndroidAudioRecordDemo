@@ -335,7 +335,6 @@ class RecorderViewModel : ViewModel() {
                 Log.d(TAG, "Recording loop started: samplesPerUpdate=$samplesPerUpdate")
 
                 while (!stopRecord) {
-                    audioBuffer.clear()
                     val frameBytes = recorder?.read(audioBuffer, bufferSizeInBytes)
                     if (frameBytes != null && frameBytes > 0) {
                         dos.write(audioBuffer.array(), 0, frameBytes)
