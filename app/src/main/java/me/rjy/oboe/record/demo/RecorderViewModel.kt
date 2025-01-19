@@ -49,7 +49,7 @@ class RecorderViewModel : ViewModel() {
     val isStereo = mutableStateOf(true)  // true为立体声,false为单声道
     val sampleRate = mutableIntStateOf(48000) // 采样率选项
     val isFloat = mutableStateOf(false)  // true为float格式,false为short格式
-    val useOboe = mutableStateOf(false)  // true使用oboe,false使用AudioRecord
+    val useOboe = mutableStateOf(true)  // true使用oboe,false使用AudioRecord
     val selectedAudioSource = mutableIntStateOf(MediaRecorder.AudioSource.DEFAULT) // 选中的音频源
     val selectedAudioApi = mutableIntStateOf(0) // 选中的AudioApi: 0=Unspecified, 1=AAudio, 2=OpenSLES
 

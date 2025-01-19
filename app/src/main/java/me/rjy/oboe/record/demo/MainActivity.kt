@@ -397,15 +397,6 @@ private fun RecordMethodSection(viewModel: RecorderViewModel) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RadioButton(
-                selected = !viewModel.useOboe.value,
-                onClick = { viewModel.setUseOboe(false) }
-            )
-            Text(
-                text = "AudioRecord",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.clickable { viewModel.setUseOboe(false) }
-            )
-            RadioButton(
                 selected = viewModel.useOboe.value,
                 onClick = { viewModel.setUseOboe(true) }
             )
@@ -413,6 +404,15 @@ private fun RecordMethodSection(viewModel: RecorderViewModel) {
                 text = "Oboe",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.clickable { viewModel.setUseOboe(true) }
+            )
+            RadioButton(
+                selected = !viewModel.useOboe.value,
+                onClick = { viewModel.setUseOboe(false) }
+            )
+            Text(
+                text = "AudioRecord",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.clickable { viewModel.setUseOboe(false) }
             )
         }
     }
