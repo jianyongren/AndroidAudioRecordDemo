@@ -39,8 +39,8 @@ object PreferenceManager {
     fun loadSettings(context: Context): RecorderSettings {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         return RecorderSettings(
-            useOboe = prefs.getBoolean(KEY_USE_OBOE, false),
-            isStereo = prefs.getBoolean(KEY_IS_STEREO, true),
+            useOboe = prefs.getBoolean(KEY_USE_OBOE, true),
+            isStereo = prefs.getBoolean(KEY_IS_STEREO, false),
             sampleRate = prefs.getInt(KEY_SAMPLE_RATE, 48000),
             isFloat = prefs.getBoolean(KEY_IS_FLOAT, false),
             echoCanceler = prefs.getBoolean(KEY_ECHO_CANCELER, false),
