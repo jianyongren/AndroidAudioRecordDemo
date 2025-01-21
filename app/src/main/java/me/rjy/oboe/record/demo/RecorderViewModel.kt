@@ -56,11 +56,11 @@ class RecorderViewModel : ViewModel() {
     val selectedAudioApi = mutableIntStateOf(0) // 选中的AudioApi: 0=Unspecified, 1=AAudio, 2=OpenSLES
 
     // 波形数据
-    private val _leftChannelData = mutableStateOf<List<Float>>(emptyList())
-    val leftChannelData: State<List<Float>> = _leftChannelData
+    private val _leftChannelBuffer = WaveformBuffer(150)
+    val leftChannelBuffer: WaveformBuffer = _leftChannelBuffer
 
-    private val _rightChannelData = mutableStateOf<List<Float>>(emptyList())
-    val rightChannelData: State<List<Float>> = _rightChannelData
+    private val _rightChannelBuffer = WaveformBuffer(150)
+    val rightChannelBuffer: WaveformBuffer = _rightChannelBuffer
 
     // 波形数据的最大采样点数，由View的宽度决定
     private var maxWaveformPoints = 150
@@ -275,8 +275,8 @@ class RecorderViewModel : ViewModel() {
             return
         }
         // 只在开始录音时重置波形数据
-        _leftChannelData.value = emptyList()
-        _rightChannelData.value = emptyList()
+        _leftChannelBuffer.clear()
+        _rightChannelBuffer.clear()
         recordingStatus.value = true
         recordedFilePath.value = pcmPath
         Log.d(TAG, "startRecord")
@@ -314,8 +314,8 @@ class RecorderViewModel : ViewModel() {
             Log.e(TAG, "AudioRecord init failed")
             recordingStatus.value = false
             // 初始化失败时清空波形数据
-            _leftChannelData.value = emptyList()
-            _rightChannelData.value = emptyList()
+            _leftChannelBuffer.clear()
+            _rightChannelBuffer.clear()
             return
         }
         stopRecord = false
@@ -352,9 +352,9 @@ class RecorderViewModel : ViewModel() {
 
                             // 计算这一帧数据中的振幅值
                             calculateAmplitude(audioBuffer, frameBytes) { leftAmplitude, rightAmplitude ->
-                                _leftChannelData.value = (listOf(leftAmplitude) + _leftChannelData.value).take(maxWaveformPoints)
+                                _leftChannelBuffer.write(leftAmplitude)
                                 if (rightAmplitude != null) {
-                                    _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
+                                    _rightChannelBuffer.write(rightAmplitude)
                                 }
                             }
                         } else {
@@ -408,14 +408,14 @@ class RecorderViewModel : ViewModel() {
                     selectedAudioApi.intValue,
                 )
                 // 初始化失败时清空波形数据
-                _leftChannelData.value = emptyList()
-                _rightChannelData.value = emptyList()
+                _leftChannelBuffer.clear()
+                _rightChannelBuffer.clear()
             } catch (e: Exception) {
                 Log.e(TAG, "Oboe record failed", e)
                 recordingStatus.value = false
                 // 初始化失败时清空波形数据
-                _leftChannelData.value = emptyList()
-                _rightChannelData.value = emptyList()
+                _leftChannelBuffer.clear()
+                _rightChannelBuffer.clear()
             }
         }
     }
@@ -546,16 +546,19 @@ class RecorderViewModel : ViewModel() {
         val buffer = ByteBuffer.wrap(audioData)
         calculateAmplitude(buffer, size) { leftAmplitude, rightAmplitude ->
             viewModelScope.launch(Dispatchers.Main) {
-                _leftChannelData.value = (listOf(leftAmplitude) + _leftChannelData.value).take(maxWaveformPoints)
+                _leftChannelBuffer.write(leftAmplitude)
                 if (rightAmplitude != null) {
-                    _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
+                    _rightChannelBuffer.write(rightAmplitude)
+                } else {
+                    _rightChannelBuffer.write(leftAmplitude)  // 单声道时左右声道使用相同数据
                 }
             }
         }
     }
 
     fun setMaxWaveformPoints(points: Int) {
-        maxWaveformPoints = points
+        _leftChannelBuffer.resize(points)
+        _rightChannelBuffer.resize(points)
     }
 
     fun setSelectedDeviceId(value: Int) {

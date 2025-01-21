@@ -15,33 +15,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import me.rjy.oboe.record.demo.WaveformBuffer
 
 private const val TAG = "WaveformView"
 
 @Composable
 fun WaveformView(
-    waveformData: List<Float>,
+    waveformBuffer: WaveformBuffer,
     modifier: Modifier = Modifier,
     waveColor: Color = MaterialTheme.colorScheme.primary,
-    onMaxPointsCalculated: (Int) -> Unit
 ) {
-    var lastSize by remember { mutableIntStateOf(0) }
-    var maxPoints by remember { mutableIntStateOf(0) }
-    
-    LaunchedEffect(waveformData) {
-        if (waveformData.size != lastSize) {
-            lastSize = waveformData.size
-//            Log.d(TAG, "Waveform data size changed: $lastSize")
-        }
-    }
-
-    LaunchedEffect(maxPoints) {
-        if (maxPoints > 0) {
-            onMaxPointsCalculated(maxPoints)
-            Log.d(TAG, "Max points calculated: $maxPoints")
-        }
-    }
-
     Canvas(
         modifier = modifier
             .fillMaxWidth()
@@ -54,7 +37,10 @@ fun WaveformView(
         // 固定每个采样点之间的间距为2dp
         val pointSpacing = 1.dp.toPx()
         // 计算最大可显示的采样点数
-        maxPoints = (width / pointSpacing).toInt()
+        val maxPoints = (width / pointSpacing).toInt()
+        if (maxPoints != waveformBuffer.size) {
+            waveformBuffer.resize(maxPoints)
+        }
 
         // 绘制中心线
         drawLine(
@@ -64,19 +50,15 @@ fun WaveformView(
             strokeWidth = 1f
         )
 
-        if (waveformData.isEmpty()) {
-            Log.d(TAG, "No waveform data to draw")
-            return@Canvas
-        }
-
         // 绘制采样点的竖线
-        waveformData.forEachIndexed { index, amplitude ->
+        for (i in 0 until maxPoints) {
+            val amplitude = waveformBuffer.get(i)
             // 计算x坐标，最新的数据点从最右边开始
-            val x = width - (index * pointSpacing)
+            val x = width - (i * pointSpacing)
             
             // 如果x坐标小于0，说明已经超出了可视区域，停止绘制
             if (x < -pointSpacing) {
-                return@forEachIndexed
+                break
             }
             
             // 绘制竖线

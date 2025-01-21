@@ -201,7 +201,7 @@ class MainActivity : ComponentActivity() {
                                 if (viewModel.isStereo.value) {
                                     // 立体声模式：显示两个波形图
                                     Column(
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         // 左声道波形
                                         Text(
@@ -210,13 +210,10 @@ class MainActivity : ComponentActivity() {
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                         WaveformView(
-                                            waveformData = viewModel.leftChannelData.value,
+                                            waveformBuffer = viewModel.leftChannelBuffer,
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .height(96.dp),
-                                            onMaxPointsCalculated = { points ->
-                                                viewModel.setMaxWaveformPoints(points)
-                                            }
                                         )
 
                                         // 右声道波形
@@ -226,25 +223,19 @@ class MainActivity : ComponentActivity() {
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                         WaveformView(
-                                            waveformData = viewModel.rightChannelData.value,
+                                            waveformBuffer = viewModel.rightChannelBuffer,
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .height(96.dp),
-                                            onMaxPointsCalculated = { points ->
-                                                viewModel.setMaxWaveformPoints(points)
-                                            }
                                         )
                                     }
                                 } else {
                                     // 单声道模式：显示一个波形图
                                     WaveformView(
-                                        waveformData = viewModel.leftChannelData.value,
+                                        waveformBuffer = viewModel.leftChannelBuffer,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(200.dp),
-                                        onMaxPointsCalculated = { points ->
-                                            viewModel.setMaxWaveformPoints(points)
-                                        }
                                     )
                                 }
 
