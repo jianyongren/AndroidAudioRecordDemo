@@ -131,10 +131,21 @@ class RecorderViewModel : ViewModel() {
         val lastModified: Long
     )
     val pcmFileList = mutableStateOf<List<PcmFileInfo>>(emptyList())
+    
+    // 添加编辑模式状态
+    val isEditMode = mutableStateOf(false)
+    val selectedFiles = mutableStateOf<Set<File>>(emptySet())
 
     private val currentSampleRate get() = sampleRate.intValue
     private val currentChannel get() = if(isStereo.value) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
     private val currentFormat get() = if(isFloat.value) AudioFormat.ENCODING_PCM_FLOAT else AudioFormat.ENCODING_PCM_16BIT
+
+    // 添加播放参数数据类
+    data class PlaybackParams(
+        val isStereo: Boolean,
+        val sampleRate: Int,
+        val isFloat: Boolean
+    )
 
     init {
         // 加载保存的设置
@@ -448,20 +459,44 @@ class RecorderViewModel : ViewModel() {
         }
     }
 
+    // 从文件名解析播放参数
+    private fun parsePlaybackParams(fileName: String): PlaybackParams {
+        // 默认参数
+        var isStereo = false
+        var sampleRate = 48000
+        var isFloat = false
+
+        // 解析文件名中的参数
+        fileName.split("_").forEach { part ->
+            when {
+                part == "stereo" -> isStereo = true
+                part == "mono" -> isStereo = false
+                part == "float" -> isFloat = true
+                part == "short" -> isFloat = false
+                part.endsWith("Hz") -> {
+                    val rate = part.replace("Hz", "").toIntOrNull()
+                    if (rate != null) {
+                        sampleRate = rate
+                    }
+                }
+            }
+        }
+
+        return PlaybackParams(isStereo, sampleRate, isFloat)
+    }
+
     @OptIn(DelicateCoroutinesApi::class)
     fun playPcm(pcmPath: String) {
         Log.d(TAG, "playPcm $pcmPath")
-        // 设置系统音量为80%
-//        val audioManager = App.context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-//        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-//        val targetVolume = (maxVolume * 0.8).toInt()
-//        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0)
-//        Log.d(TAG, "max volume $maxVolume, set volume $targetVolume")
 
+        // 从文件名解析播放参数
+        val fileName = File(pcmPath).name
+        val playbackParams = parsePlaybackParams(fileName)
+        
         val bufferSizeInBytes = AudioRecord.getMinBufferSize(
-            currentSampleRate,
-            currentChannel,
-            currentFormat
+            playbackParams.sampleRate,
+            if (playbackParams.isStereo) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO,
+            if (playbackParams.isFloat) AudioFormat.ENCODING_PCM_FLOAT else AudioFormat.ENCODING_PCM_16BIT
         )
         val audioTrackBuilder = AudioTrack.Builder()
             .setAudioAttributes(
@@ -471,9 +506,15 @@ class RecorderViewModel : ViewModel() {
                     .build()
             ).setAudioFormat(
                 AudioFormat.Builder()
-                    .setSampleRate(currentSampleRate)
-                    .setChannelMask(getOutChannel(channel = currentChannel))
-                    .setEncoding(currentFormat)
+                    .setSampleRate(playbackParams.sampleRate)
+                    .setChannelMask(getOutChannel(
+                        if (playbackParams.isStereo) AudioFormat.CHANNEL_IN_STEREO 
+                        else AudioFormat.CHANNEL_IN_MONO
+                    ))
+                    .setEncoding(
+                        if (playbackParams.isFloat) AudioFormat.ENCODING_PCM_FLOAT 
+                        else AudioFormat.ENCODING_PCM_16BIT
+                    )
                     .build()
             ).setBufferSizeInBytes(bufferSizeInBytes * 4)
             .setTransferMode(AudioTrack.MODE_STREAM)
@@ -485,20 +526,18 @@ class RecorderViewModel : ViewModel() {
         pcmPlayingStatus.value = true
         viewModelScope.launch(newSingleThreadContext("play-pcm-thread")) {
             val fi = FileInputStream(pcmPath)
-            val buffer = if (isFloat.value) {
+            val buffer = if (playbackParams.isFloat) {
                 ByteArray(size = bufferSizeInBytes)
             } else {
                 ByteArray(size = bufferSizeInBytes)
             }
             var count: Int
-//            audioTrack.setVolume(1f)
             audioTrack.play()
 
             while (!stopPlayPcm) {
                 count = fi.read(buffer)
-//                Log.d(TAG, "play pcm read: $count")
                 if (count > 0) {
-                    val ret = if (isFloat.value) {
+                    val ret = if (playbackParams.isFloat) {
                         // 直接读取float格式的数据
                         val byteBuffer = ByteBuffer.wrap(buffer, 0, count)
                             .order(ByteOrder.LITTLE_ENDIAN)
@@ -545,7 +584,7 @@ class RecorderViewModel : ViewModel() {
         val dateStr = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
             .format(java.util.Date())
         val channelStr = if (isStereo.value) "stereo" else "mono"
-        val sampleRateStr = "${sampleRate.intValue/1000}kHz"
+        val sampleRateStr = "${sampleRate.intValue}Hz"
         val formatStr = if (isFloat.value) "float" else "short"
         val recorderStr = if (useOboe.value) "oboe" else "audiorecord"
         val parts = mutableListOf(recorderStr, channelStr, sampleRateStr, formatStr)
@@ -616,6 +655,43 @@ class RecorderViewModel : ViewModel() {
                 lastModified = file.lastModified()
             )
         }.sortedByDescending { it.lastModified }
+    }
+
+    // 切换编辑模式
+    fun toggleEditMode() {
+        isEditMode.value = !isEditMode.value
+        if (!isEditMode.value) {
+            // 退出编辑模式时清空选中状态
+            selectedFiles.value = emptySet()
+        }
+    }
+
+    // 切换文件选中状态
+    fun toggleFileSelection(file: File) {
+        val currentSelected = selectedFiles.value.toMutableSet()
+        if (currentSelected.contains(file)) {
+            currentSelected.remove(file)
+        } else {
+            currentSelected.add(file)
+        }
+        selectedFiles.value = currentSelected
+    }
+
+    // 删除选中的文件
+    fun deleteSelectedFiles(context: Context, onAllFilesDeleted: () -> Unit) {
+        selectedFiles.value.forEach { file ->
+            file.delete()
+        }
+        // 刷新文件列表
+        refreshPcmFileList(context)
+        // 清空选中状态并退出编辑模式
+        selectedFiles.value = emptySet()
+        isEditMode.value = false
+        
+        // 如果文件列表为空，调用回调
+        if (pcmFileList.value.isEmpty()) {
+            onAllFilesDeleted()
+        }
     }
 
     companion object {

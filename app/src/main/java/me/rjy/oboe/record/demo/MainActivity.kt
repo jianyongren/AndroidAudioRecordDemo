@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,6 +61,8 @@ import androidx.core.app.ActivityCompat
 import me.rjy.oboe.record.demo.ui.WaveformView
 import me.rjy.oboe.record.demo.ui.theme.OboeRecordDemoTheme
 import java.io.File
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 
 class MainActivity : ComponentActivity() {
 
@@ -697,49 +700,110 @@ private fun EchoCancelSection(viewModel: RecorderViewModel) {
 private fun PcmFileSelectDialog(
     onDismissRequest: () -> Unit,
     onFileSelected: (File) -> Unit,
-    viewModel: RecorderViewModel
+    viewModel: RecorderViewModel,
+    context: Context
 ) {
     AlertDialog(
-        onDismissRequest = onDismissRequest,
-        title = { Text("选择PCM文件") },
+        onDismissRequest = {
+            if (viewModel.isEditMode.value) {
+                viewModel.toggleEditMode()
+            } else {
+                onDismissRequest()
+            }
+        },
+        title = { Text(if (viewModel.isEditMode.value) "选择要删除的文件" else "选择PCM文件") },
         text = {
             LazyColumn {
                 items(viewModel.pcmFileList.value) { fileInfo ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onFileSelected(fileInfo.file) }
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = {
+                                        if (viewModel.isEditMode.value) {
+                                            viewModel.toggleFileSelection(fileInfo.file)
+                                        } else {
+                                            onFileSelected(fileInfo.file)
+                                        }
+                                    },
+                                    onLongPress = {
+                                        if (!viewModel.isEditMode.value) {
+                                            viewModel.toggleEditMode()
+                                            // 长按时自动选中当前项
+                                            viewModel.toggleFileSelection(fileInfo.file)
+                                        }
+                                    }
+                                )
+                            }
                             .padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.Top
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            // 去掉文件名最后的日期部分和.pcm扩展名
-                            val displayName = fileInfo.name
-                                .replace("_\\d{8}_\\d{6}\\.pcm$".toRegex(), "")
-                            Text(
-                                text = displayName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 2,
-                                softWrap = true,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
-                            Text(
-                                text = java.text.SimpleDateFormat(
-                                    "yyyy-MM-dd HH:mm:ss",
-                                    java.util.Locale.getDefault()
-                                ).format(java.util.Date(fileInfo.lastModified)),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (viewModel.isEditMode.value) {
+                                Checkbox(
+                                    checked = viewModel.selectedFiles.value.contains(fileInfo.file),
+                                    onCheckedChange = { viewModel.toggleFileSelection(fileInfo.file) }
+                                )
+                            }
+                            Column {
+                                // 去掉文件名最后的日期部分和.pcm扩展名
+                                val displayName = fileInfo.name
+                                    .replace("_\\d{8}_\\d{6}\\.pcm$".toRegex(), "")
+                                Text(
+                                    text = displayName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 2,
+                                    softWrap = true,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                                Text(
+                                    text = java.text.SimpleDateFormat(
+                                        "yyyy-MM-dd HH:mm:ss",
+                                        java.util.Locale.getDefault()
+                                    ).format(java.util.Date(fileInfo.lastModified)),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismissRequest) {
-                Text("取消")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (viewModel.isEditMode.value) {
+                    TextButton(
+                        onClick = {
+                            viewModel.toggleEditMode()
+                        }
+                    ) {
+                        Text("取消")
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.deleteSelectedFiles(context) {
+                                // 当所有文件都被删除时，关闭对话框
+                                onDismissRequest()
+                            }
+                        },
+                        enabled = viewModel.selectedFiles.value.isNotEmpty()
+                    ) {
+                        Text("删除")
+                    }
+                } else {
+                    TextButton(onClick = onDismissRequest) {
+                        Text("取消")
+                    }
+                }
             }
         }
     )
@@ -793,7 +857,8 @@ private fun OperationButtons(
                 showFileSelectDialog = false
                 viewModel.playPcm(file.absolutePath)
             },
-            viewModel = viewModel
+            viewModel = viewModel,
+            context = context
         )
     }
 }
