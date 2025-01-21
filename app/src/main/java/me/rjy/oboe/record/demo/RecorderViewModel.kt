@@ -124,6 +124,14 @@ class RecorderViewModel : ViewModel() {
         AudioApiInfo(2, "OpenSLES")
     )
 
+    // 添加 PCM 文件列表状态
+    data class PcmFileInfo(
+        val file: File,
+        val name: String,
+        val lastModified: Long
+    )
+    val pcmFileList = mutableStateOf<List<PcmFileInfo>>(emptyList())
+
     private val currentSampleRate get() = sampleRate.intValue
     private val currentChannel get() = if(isStereo.value) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
     private val currentFormat get() = if(isFloat.value) AudioFormat.ENCODING_PCM_FLOAT else AudioFormat.ENCODING_PCM_16BIT
@@ -592,6 +600,22 @@ class RecorderViewModel : ViewModel() {
             return
         }
         selectedDeviceId.intValue = value
+    }
+
+    // 刷新 PCM 文件列表
+    fun refreshPcmFileList(context: Context) {
+        val filesDir = context.filesDir
+        val files = filesDir.listFiles { file ->
+            file.isFile && file.name.endsWith(".pcm")
+        } ?: emptyArray()
+        
+        pcmFileList.value = files.map { file ->
+            PcmFileInfo(
+                file = file,
+                name = file.name,
+                lastModified = file.lastModified()
+            )
+        }.sortedByDescending { it.lastModified }
     }
 
     companion object {

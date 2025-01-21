@@ -24,10 +24,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenuItem
@@ -41,6 +44,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -239,46 +243,12 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
-                                // 按钮
-                                Row(
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Button(
-                                        onClick = { 
-                                            if (viewModel.recordingStatus.value) {
-                                                viewModel.stopRecord()
-                                            } else {
-                                                startRecord()
-                                            }
-                                        },
-                                        enabled = !viewModel.pcmPlayingStatus.value
-                                    ) {
-                                        Text(text = if (viewModel.recordingStatus.value) "停止录制" else "开始录制")
-                                    }
-                                    
-                                    Button(
-                                        onClick = {
-                                            if (viewModel.pcmPlayingStatus.value) {
-                                                viewModel.stopPcm()
-                                            } else {
-                                                val pcmFile = getRecordFilePath()
-                                                if (File(pcmFile).exists()) {
-                                                    viewModel.playPcm(getRecordFilePath())
-                                                } else {
-                                                    Toast.makeText(
-                                                        this@MainActivity,
-                                                        R.string.file_not_exists,
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
-                                                }
-                                            }
-                                        },
-                                        enabled = !viewModel.recordingStatus.value
-                                    ) {
-                                        Text(text = if (viewModel.pcmPlayingStatus.value) "停止播放" else "播放PCM")
-                                    }
-                                }
+                                // 使用新的操作按钮组件
+                                OperationButtons(
+                                    viewModel = viewModel,
+                                    startRecord = { startRecord() },
+                                    context = this@MainActivity
+                                )
                             }
                         }
 
@@ -719,5 +689,111 @@ private fun EchoCancelSection(viewModel: RecorderViewModel) {
                 onCheckedChange = { viewModel.setEchoCanceler(it) }
             )
         }
+    }
+}
+
+// 添加文件选择对话框组件
+@Composable
+private fun PcmFileSelectDialog(
+    onDismissRequest: () -> Unit,
+    onFileSelected: (File) -> Unit,
+    viewModel: RecorderViewModel
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text("选择PCM文件") },
+        text = {
+            LazyColumn {
+                items(viewModel.pcmFileList.value) { fileInfo ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onFileSelected(fileInfo.file) }
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            // 去掉文件名最后的日期部分和.pcm扩展名
+                            val displayName = fileInfo.name
+                                .replace("_\\d{8}_\\d{6}\\.pcm$".toRegex(), "")
+                            Text(
+                                text = displayName,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2,
+                                softWrap = true,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            Text(
+                                text = java.text.SimpleDateFormat(
+                                    "yyyy-MM-dd HH:mm:ss",
+                                    java.util.Locale.getDefault()
+                                ).format(java.util.Date(fileInfo.lastModified)),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+// 修改操作按钮部分
+@Composable
+private fun OperationButtons(
+    viewModel: RecorderViewModel,
+    startRecord: () -> Unit,
+    context: Context
+) {
+    var showFileSelectDialog by remember { mutableStateOf(false) }
+
+    Row(
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Button(
+            onClick = { 
+                if (viewModel.recordingStatus.value) {
+                    viewModel.stopRecord()
+                } else {
+                    startRecord()
+                }
+            },
+            enabled = !viewModel.pcmPlayingStatus.value
+        ) {
+            Text(text = if (viewModel.recordingStatus.value) "停止录制" else "开始录制")
+        }
+        
+        Button(
+            onClick = {
+                if (viewModel.pcmPlayingStatus.value) {
+                    viewModel.stopPcm()
+                } else {
+                    viewModel.refreshPcmFileList(context)
+                    showFileSelectDialog = true
+                }
+            },
+            enabled = !viewModel.recordingStatus.value
+        ) {
+            Text(text = if (viewModel.pcmPlayingStatus.value) "停止播放" else "播放PCM")
+        }
+    }
+
+    if (showFileSelectDialog) {
+        PcmFileSelectDialog(
+            onDismissRequest = { showFileSelectDialog = false },
+            onFileSelected = { file ->
+                showFileSelectDialog = false
+                viewModel.playPcm(file.absolutePath)
+            },
+            viewModel = viewModel
+        )
     }
 }
