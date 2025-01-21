@@ -2,6 +2,7 @@
 #include <vector>
 #include <android/log.h>
 #include <jni.h>
+#include "logging.h"
 
 #define LOG(...) __android_log_print(ANDROID_LOG_DEBUG, "OboeRecorder", __VA_ARGS__)
 
@@ -55,14 +56,14 @@ void OboeRecorder::initAudioDataArray(size_t initialSize) {
     audioDataArraySize_ = initialSize;
     jbyteArray localArray = cachedEnv_->NewByteArray(initialSize);
     if (localArray) {
-        audioDataArray_ = cachedEnv_->NewWeakGlobalRef(localArray);
+        audioDataArray_ = cachedEnv_->NewGlobalRef(localArray);
         cachedEnv_->DeleteLocalRef(localArray);
     }
 }
 
 void OboeRecorder::cleanupAudioDataArray() {
     if (cachedEnv_ && audioDataArray_) {
-        cachedEnv_->DeleteWeakGlobalRef(audioDataArray_);
+        cachedEnv_->DeleteGlobalRef(audioDataArray_);
         audioDataArray_ = nullptr;
         audioDataArraySize_ = 0;
     }

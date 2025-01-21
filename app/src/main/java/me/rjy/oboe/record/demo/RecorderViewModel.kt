@@ -544,8 +544,8 @@ class RecorderViewModel : ViewModel() {
     @Keep
     private fun onAudioData(audioData: ByteArray, size: Int) {
         val buffer = ByteBuffer.wrap(audioData)
-        viewModelScope.launch(Dispatchers.Main) {
-            calculateAmplitude(buffer, size) { leftAmplitude, rightAmplitude ->
+        calculateAmplitude(buffer, size) { leftAmplitude, rightAmplitude ->
+            viewModelScope.launch(Dispatchers.Main) {
                 _leftChannelData.value = (listOf(leftAmplitude) + _leftChannelData.value).take(maxWaveformPoints)
                 if (rightAmplitude != null) {
                     _rightChannelData.value = (listOf(rightAmplitude) + _rightChannelData.value).take(maxWaveformPoints)
