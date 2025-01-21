@@ -534,10 +534,36 @@ class RecorderViewModel : ViewModel() {
     }
 
     fun generateRecordFileName(): String {
+        val dateStr = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
+            .format(java.util.Date())
         val channelStr = if (isStereo.value) "stereo" else "mono"
         val sampleRateStr = "${sampleRate.intValue/1000}kHz"
         val formatStr = if (isFloat.value) "float" else "short"
-        return "record_${channelStr}_${sampleRateStr}_${formatStr}.pcm"
+        val recorderStr = if (useOboe.value) "oboe" else "audiorecord"
+        val parts = mutableListOf(recorderStr, channelStr, sampleRateStr, formatStr)
+
+        // 只有在非默认值时才添加音频API
+        if (selectedAudioApi.intValue != 0) {
+            val apiName = audioApis.find { it.id == selectedAudioApi.intValue }?.name ?: "Unknown"
+            parts.add(apiName)
+        }
+
+        // 只有在非默认值时才添加音频源
+        if (selectedAudioSource.intValue != MediaRecorder.AudioSource.DEFAULT) {
+            val sourceName = audioSources.find { it.id == selectedAudioSource.intValue }?.name ?: "Unknown"
+            parts.add(sourceName)
+        }
+
+        // 只有在非默认值时才添加录音设备
+        if (selectedDeviceId.intValue != 0) {
+            val deviceName = audioDevices.value.find { it.id == selectedDeviceId.intValue }?.name ?: "Unknown"
+            parts.add(deviceName)
+        }
+
+        // 添加日期到最后
+        parts.add(dateStr)
+
+        return parts.joinToString("_") + ".pcm"
     }
 
     // 供native层调用的方法，用于处理音频数据
