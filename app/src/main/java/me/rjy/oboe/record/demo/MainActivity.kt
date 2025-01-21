@@ -17,12 +17,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -55,14 +55,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
+import me.rjy.oboe.record.demo.ui.WaveformPlayView
 import me.rjy.oboe.record.demo.ui.WaveformView
 import me.rjy.oboe.record.demo.ui.theme.OboeRecordDemoTheme
 import java.io.File
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
 
 class MainActivity : ComponentActivity() {
 
@@ -210,40 +210,55 @@ class MainActivity : ComponentActivity() {
                                     Column(
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        // 左声道波形
-                                        Text(
-                                            text = "左声道",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.primary
+                                        if (viewModel.pcmPlayingStatus.value) {
+                                            // 播放状态：显示播放波形
+                                            WaveformPlayView(
+                                                waveform = viewModel.playbackWaveform.value,
+                                                progress = viewModel.playbackProgress.value,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        } else {
+                                            // 录音状态：显示实时波形
+                                            Text(
+                                                text = "左声道",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            WaveformView(
+                                                waveformBuffer = viewModel.leftChannelBuffer,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                            )
+
+                                            Text(
+                                                text = "右声道",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            WaveformView(
+                                                waveformBuffer = viewModel.rightChannelBuffer,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    // 单声道模式：显示一个波形图
+                                    if (viewModel.pcmPlayingStatus.value) {
+                                        // 播放状态：显示播放波形
+                                        WaveformPlayView(
+                                            waveform = viewModel.playbackWaveform.value,
+                                            progress = viewModel.playbackProgress.value,
+                                            modifier = Modifier.fillMaxWidth()
                                         )
+                                    } else {
+                                        // 录音状态：显示实时波形
                                         WaveformView(
                                             waveformBuffer = viewModel.leftChannelBuffer,
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(96.dp),
-                                        )
-
-                                        // 右声道波形
-                                        Text(
-                                            text = "右声道",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        WaveformView(
-                                            waveformBuffer = viewModel.rightChannelBuffer,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(96.dp),
                                         )
                                     }
-                                } else {
-                                    // 单声道模式：显示一个波形图
-                                    WaveformView(
-                                        waveformBuffer = viewModel.leftChannelBuffer,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(200.dp),
-                                    )
                                 }
 
                                 // 使用新的操作按钮组件

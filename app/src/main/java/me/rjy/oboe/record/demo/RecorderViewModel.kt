@@ -14,6 +14,7 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.Keep
 import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
@@ -34,6 +35,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.Executors
 import kotlin.concurrent.Volatile
+import kotlin.math.abs
 
 class RecorderViewModel : ViewModel() {
     private var recorder: AudioRecord? = null
@@ -64,6 +66,15 @@ class RecorderViewModel : ViewModel() {
 
     // 波形数据的最大采样点数，由View的宽度决定
     private var maxWaveformPoints = 150
+
+    // 添加播放波形相关的状态
+    data class PlaybackWaveform(
+        val leftChannel: List<Float>,
+        val rightChannel: List<Float>?,  // 单声道时为null
+        val totalSamples: Int
+    )
+    val playbackWaveform = mutableStateOf<PlaybackWaveform?>(null)
+    val playbackProgress = mutableFloatStateOf(0f)  // 0.0 ~ 1.0
 
     // 更新振幅计算策略
     private fun updateAmplitudeCalculator() {
@@ -493,6 +504,10 @@ class RecorderViewModel : ViewModel() {
         val fileName = File(pcmPath).name
         val playbackParams = parsePlaybackParams(fileName)
         
+        // 加载波形数据
+        loadWaveformFromPcm(pcmPath, playbackParams)
+        playbackProgress.floatValue = 0f
+
         val bufferSizeInBytes = AudioRecord.getMinBufferSize(
             playbackParams.sampleRate,
             if (playbackParams.isStereo) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO,
@@ -532,11 +547,17 @@ class RecorderViewModel : ViewModel() {
                 ByteArray(size = bufferSizeInBytes)
             }
             var count: Int
+            var totalBytesRead = 0L
+            val totalBytes = File(pcmPath).length()
             audioTrack.play()
 
             while (!stopPlayPcm) {
                 count = fi.read(buffer)
                 if (count > 0) {
+                    totalBytesRead += count
+                    // 更新播放进度
+                    playbackProgress.floatValue = totalBytesRead.toFloat() / totalBytes
+                    
                     val ret = if (playbackParams.isFloat) {
                         // 直接读取float格式的数据
                         val byteBuffer = ByteBuffer.wrap(buffer, 0, count)
@@ -562,6 +583,9 @@ class RecorderViewModel : ViewModel() {
             audioTrack.release()
             withContext(Dispatchers.Main) {
                 pcmPlayingStatus.value = false
+                // 清空波形数据
+                playbackWaveform.value = null
+                playbackProgress.floatValue = 0f
             }
         }
     }
@@ -694,9 +718,62 @@ class RecorderViewModel : ViewModel() {
         }
     }
 
+    // 从PCM文件加载波形数据
+    private fun loadWaveformFromPcm(pcmPath: String, playbackParams: PlaybackParams) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val file = File(pcmPath)
+                val totalBytes = file.length()
+                val bytesPerSample = if (playbackParams.isFloat) 4 else 2
+                val channelCount = if (playbackParams.isStereo) 2 else 1
+                val totalSamples = (totalBytes / (bytesPerSample * channelCount)).toInt()
+                
+                // 每个像素对应的采样点数
+                val samplesPerPixel = (totalSamples / MAX_WAVEFORM_POINTS).coerceAtLeast(1)
+                val leftChannel = mutableListOf<Float>()
+                val rightChannel = if (playbackParams.isStereo) mutableListOf<Float>() else null
+
+                // 创建合适的振幅计算器
+                val amplitudeCalculator = when {
+                    playbackParams.isFloat && playbackParams.isStereo -> FloatStereoAmplitudeCalculator(samplesPerPixel)
+                    playbackParams.isFloat && !playbackParams.isStereo -> FloatMonoAmplitudeCalculator(samplesPerPixel)
+                    !playbackParams.isFloat && playbackParams.isStereo -> ShortStereoAmplitudeCalculator(samplesPerPixel)
+                    else -> ShortMonoAmplitudeCalculator(samplesPerPixel)
+                }
+                
+                FileInputStream(file).use { fis ->
+                    val buffer = ByteArray(samplesPerPixel * bytesPerSample * channelCount)
+                    
+                    while (true) {
+                        val bytesRead = fis.read(buffer)
+                        if (bytesRead <= 0) break
+                        
+                        val byteBuffer = ByteBuffer.wrap(buffer, 0, bytesRead)
+                        amplitudeCalculator.calculateAmplitude(byteBuffer, bytesRead) { left, right ->
+                            leftChannel.add(left)
+                            right?.let { rightChannel?.add(it) }
+                        }
+                    }
+                }
+                
+                withContext(Dispatchers.Main) {
+                    playbackWaveform.value = PlaybackWaveform(
+                        leftChannel = leftChannel,
+                        rightChannel = rightChannel,
+                        totalSamples = totalSamples
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading waveform", e)
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "RecorderViewModel"
         // 声音波形展示采样周期，单位：毫秒
         const val SAMPLE_UPDATE_PERIOD_MS = 10
+        // 最大波形点数
+        const val MAX_WAVEFORM_POINTS = 1000
     }
 }
