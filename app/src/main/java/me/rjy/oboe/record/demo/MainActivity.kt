@@ -25,9 +25,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.AlertDialog
@@ -106,9 +106,7 @@ class MainActivity : ComponentActivity() {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(11.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .padding(11.dp)
-                            .verticalScroll(rememberScrollState())
+                        modifier = Modifier.padding(11.dp)
                     ) {
                         // 录音参数控制部分
                         Surface(
@@ -130,64 +128,35 @@ class MainActivity : ComponentActivity() {
                                 Divider(modifier = Modifier.padding(vertical = 6.dp))
 
                                 val configuration = LocalConfiguration.current
-                                if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                                    // 横屏布局：两列
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                    ) {
-                                        // 左列
-                                        Column(
-                                            modifier = Modifier.weight(1f),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            // 录音方式设置
-                                            RecordMethodSection(viewModel)
-                                            // 播放方式设置
-                                            PlaybackMethodSection(viewModel)
-                                            // 音频源选择
-                                            AudioSourceSection(viewModel)
-                                            // 录音设备选择
-                                            RecordDeviceSection(viewModel)
-                                        }
-
-                                        // 右列
-                                        Column(
-                                            modifier = Modifier.weight(1f),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            // 声道设置
-                                            ChannelSection(viewModel)
-                                            // 采样率设置
-                                            SampleRateSection(viewModel)
-                                            // 数据格式设置
-                                            DataFormatSection(viewModel)
-                                            // 回声消除设置
-//                                            EchoCancelSection(viewModel)
-                                        }
-                                    }
-                                } else {
-                                    // 竖屏布局：单列
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        // 录音方式设置
+                                LazyVerticalGrid(
+                                    columns = GridCells.Fixed(if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 2 else 1),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    item {
                                         RecordMethodSection(viewModel)
-                                        // 播放方式设置
-                                        PlaybackMethodSection(viewModel)
-                                        // 音频源选择
+                                    }
+                                    item {
+                                        AudioApiSection(viewModel)
+                                    }
+                                    item {
                                         AudioSourceSection(viewModel)
-                                        // 录音设备选择
+                                    }
+                                    item {
                                         RecordDeviceSection(viewModel)
-                                        // 声道设置
+                                    }
+                                    item {
                                         ChannelSection(viewModel)
-                                        // 采样率设置
+                                    }
+                                    item {
                                         SampleRateSection(viewModel)
-                                        // 数据格式设置
+                                    }
+                                    item {
                                         DataFormatSection(viewModel)
-                                        // 回声消除设置
-//                                        EchoCancelSection(viewModel)
+                                    }
+                                    item {
+                                        PlaybackMethodSection(viewModel)
                                     }
                                 }
 
@@ -399,52 +368,61 @@ private fun RecordMethodSection(viewModel: RecorderViewModel) {
             )
         }
     }
+}
 
-    // 只在选择Oboe时显示AudioApi选择
-    if (viewModel.useOboe.value) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AudioApiSection(viewModel: RecorderViewModel) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = "音频API:",
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (viewModel.useOboe.value) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        )
+        var audioApiExpanded by remember { mutableStateOf(false) }
+        val currentApi = viewModel.audioApis.find {
+            it.id == viewModel.selectedAudioApi.intValue
+        }
+        ExposedDropdownMenuBox(
+            expanded = audioApiExpanded,
+            onExpandedChange = { if (viewModel.useOboe.value) audioApiExpanded = it },
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp)
         ) {
-            Text(text = "音频API:", style = MaterialTheme.typography.bodyMedium)
-            var audioApiExpanded by remember { mutableStateOf(false) }
-            val currentApi = viewModel.audioApis.find {
-                it.id == viewModel.selectedAudioApi.intValue
-            }
-            ExposedDropdownMenuBox(
+            TextField(
+                value = currentApi?.name ?: "",
+                onValueChange = {},
+                readOnly = true,
+                enabled = viewModel.useOboe.value,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = audioApiExpanded) },
+                modifier = Modifier.menuAnchor(),
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = if (viewModel.useOboe.value) 0.3f else 0.1f),
+                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = if (viewModel.useOboe.value) 0.5f else 0.1f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    disabledBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
+                    disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                ),
+                textStyle = MaterialTheme.typography.bodyMedium
+            )
+            ExposedDropdownMenu(
                 expanded = audioApiExpanded,
-                onExpandedChange = { audioApiExpanded = it },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 8.dp)
+                onDismissRequest = { audioApiExpanded = false }
             ) {
-                TextField(
-                    value = currentApi?.name ?: "",
-                    onValueChange = {},
-                    readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = audioApiExpanded) },
-                    modifier = Modifier.menuAnchor(),
-                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                        focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    textStyle = MaterialTheme.typography.bodyMedium
-                )
-                ExposedDropdownMenu(
-                    expanded = audioApiExpanded,
-                    onDismissRequest = { audioApiExpanded = false }
-                ) {
-                    viewModel.audioApis.forEach { api ->
-                        DropdownMenuItem(
-                            text = { Text(api.name) },
-                            onClick = {
-                                viewModel.setAudioApi(api.id)
-                                audioApiExpanded = false
-                            }
-                        )
-                    }
+                viewModel.audioApis.forEach { api ->
+                    DropdownMenuItem(
+                        text = { Text(api.name) },
+                        onClick = {
+                            viewModel.setAudioApi(api.id)
+                            audioApiExpanded = false
+                        }
+                    )
                 }
             }
         }
