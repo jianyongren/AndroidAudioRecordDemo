@@ -1,8 +1,9 @@
 #include <jni.h>
-#include <android/log.h>
 #include "oboe_recorder.h"
+#include "oboe_player.h"
+#include "logging.h"
 
-#define LOG(...) __android_log_print(ANDROID_LOG_DEBUG, "DemoJNI", __VA_ARGS__)
+#define LOG_TAG "DemoJNI"
 
 // 全局变量
 JavaVM* javaVm = nullptr;

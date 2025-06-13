@@ -143,6 +143,8 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             // 录音方式设置
                                             RecordMethodSection(viewModel)
+                                            // 播放方式设置
+                                            PlaybackMethodSection(viewModel)
                                             // 音频源选择
                                             AudioSourceSection(viewModel)
                                             // 录音设备选择
@@ -172,6 +174,8 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         // 录音方式设置
                                         RecordMethodSection(viewModel)
+                                        // 播放方式设置
+                                        PlaybackMethodSection(viewModel)
                                         // 音频源选择
                                         AudioSourceSection(viewModel)
                                         // 录音设备选择
@@ -257,7 +261,7 @@ class MainActivity : ComponentActivity() {
                                             waveformBuffer = viewModel.leftChannelBuffer,
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                        )
+                                            )
                                     }
                                 }
 
@@ -706,6 +710,51 @@ private fun EchoCancelSection(viewModel: RecorderViewModel) {
                 checked = viewModel.echoCanceler.value,
                 onCheckedChange = { viewModel.setEchoCanceler(it) }
             )
+        }
+    }
+}
+
+@Composable
+private fun PlaybackMethodSection(viewModel: RecorderViewModel) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(text = "播放方式:", style = MaterialTheme.typography.bodyMedium)
+        Row(
+            horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = !viewModel.useOboePlayback.value,
+                    onClick = { viewModel.setUseOboePlayback(false) }
+                )
+                Text(
+                    text = "AudioTrack",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.clickable { viewModel.setUseOboePlayback(false) }
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = viewModel.useOboePlayback.value,
+                    onClick = { viewModel.setUseOboePlayback(true) }
+                )
+                Text(
+                    text = "Oboe",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.clickable { viewModel.setUseOboePlayback(true) }
+                )
+            }
         }
     }
 }

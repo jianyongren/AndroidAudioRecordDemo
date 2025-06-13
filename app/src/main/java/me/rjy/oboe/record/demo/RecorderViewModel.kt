@@ -22,9 +22,11 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.withContext
+import me.rjy.oboe.record.demo.OboePlayer.OnPlaybackCompleteListener
 import java.io.BufferedOutputStream
 import java.io.DataOutputStream
 import java.io.File
@@ -41,6 +43,7 @@ class RecorderViewModel : ViewModel() {
     private var recorder: AudioRecord? = null
     private var mediaPlayer: MediaPlayer? = null
     private var amplitudeCalculator: AmplitudeCalculator? = null
+    private var oboePlayer: OboePlayer? = null
 
     @Volatile
     private var stopRecord = false
@@ -54,6 +57,7 @@ class RecorderViewModel : ViewModel() {
     val sampleRate = mutableIntStateOf(48000) // 采样率选项
     val isFloat = mutableStateOf(false)  // true为float格式,false为short格式
     val useOboe = mutableStateOf(true)  // true使用oboe,false使用AudioRecord
+    val useOboePlayback = mutableStateOf(true)  // true使用oboe播放,false使用AudioTrack播放
     val selectedAudioSource = mutableIntStateOf(MediaRecorder.AudioSource.DEFAULT) // 选中的音频源
     val selectedAudioApi = mutableIntStateOf(0) // 选中的AudioApi: 0=Unspecified, 1=AAudio, 2=OpenSLES
 
@@ -167,6 +171,7 @@ class RecorderViewModel : ViewModel() {
     private fun loadSettings(context: Context) {
         val settings = PreferenceManager.loadSettings(context)
         useOboe.value = settings.useOboe
+        useOboePlayback.value = settings.useOboePlayback
         isStereo.value = settings.isStereo
         sampleRate.intValue = settings.sampleRate
         isFloat.value = settings.isFloat
@@ -179,6 +184,7 @@ class RecorderViewModel : ViewModel() {
     private fun saveSettings(context: Context) {
         val settings = RecorderSettings(
             useOboe = useOboe.value,
+            useOboePlayback = useOboePlayback.value,
             isStereo = isStereo.value,
             sampleRate = sampleRate.intValue,
             isFloat = isFloat.value,
@@ -200,6 +206,14 @@ class RecorderViewModel : ViewModel() {
             return
         }
         useOboe.value = value
+        onSettingsChanged()
+    }
+
+    fun setUseOboePlayback(value: Boolean) {
+        if (pcmPlayingStatus.value) {
+            return
+        }
+        useOboePlayback.value = value
         onSettingsChanged()
     }
 
@@ -508,6 +522,82 @@ class RecorderViewModel : ViewModel() {
         loadWaveformFromPcm(pcmPath, playbackParams)
         playbackProgress.floatValue = 0f
 
+        if (useOboePlayback.value) {
+            startOboePlayback(pcmPath, playbackParams)
+        } else {
+            startAudioTrackPlayback(pcmPath, playbackParams)
+        }
+    }
+
+    private fun startOboePlayback(pcmPath: String, playbackParams: PlaybackParams) {
+        stopPlayPcm = false
+        pcmPlayingStatus.value = true
+        
+        // 创建新的OboePlayer实例
+        oboePlayer = OboePlayer(
+            filePath = pcmPath,
+            sampleRate = playbackParams.sampleRate,
+            isStereo = playbackParams.isStereo,
+            isFloat = playbackParams.isFloat,
+            audioApi = selectedAudioApi.intValue
+        ).apply {
+            // 设置播放完成回调
+            setOnPlaybackCompleteListener(object : OnPlaybackCompleteListener {
+                override fun onPlaybackComplete() {
+                    viewModelScope.launch(Dispatchers.Main) {
+                        pcmPlayingStatus.value = false
+                        playbackWaveform.value = null
+                        playbackProgress.floatValue = 0f
+                        oboePlayer?.release()
+                        oboePlayer = null
+                    }
+                }
+            })
+        }
+
+        // 开始播放
+        try {
+            val success = oboePlayer?.start() ?: false
+            if (!success) {
+                Log.e(TAG, "Failed to start Oboe playback")
+                pcmPlayingStatus.value = false
+                playbackWaveform.value = null
+                playbackProgress.floatValue = 0f
+                oboePlayer?.release()
+                oboePlayer = null
+            } else {
+                // 启动进度更新协程
+                viewModelScope.launch {
+                    while (pcmPlayingStatus.value) {
+                        oboePlayer?.let { player ->
+                            playbackProgress.floatValue = player.getPlaybackProgress()
+                        }
+                        delay(20) // 每100毫秒更新一次
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Oboe playback failed", e)
+            pcmPlayingStatus.value = false
+            playbackWaveform.value = null
+            playbackProgress.floatValue = 0f
+            oboePlayer?.release()
+            oboePlayer = null
+        }
+    }
+
+    private fun stopPlayback() {
+        stopPlayPcm = true
+        oboePlayer?.stop()
+        oboePlayer?.release()
+        oboePlayer = null
+        pcmPlayingStatus.value = false
+        playbackWaveform.value = null
+        playbackProgress.floatValue = 0f
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun startAudioTrackPlayback(pcmPath: String, playbackParams: PlaybackParams) {
         val bufferSizeInBytes = AudioRecord.getMinBufferSize(
             playbackParams.sampleRate,
             if (playbackParams.isStereo) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO,
@@ -592,6 +682,9 @@ class RecorderViewModel : ViewModel() {
 
     fun stopPcm() {
         stopPlayPcm = true
+        if (oboePlayer != null) {
+            stopPlayback()
+        }
     }
 
     private fun getOutChannel(channel: Int): Int {
@@ -767,6 +860,12 @@ class RecorderViewModel : ViewModel() {
                 Log.e(TAG, "Error loading waveform", e)
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        oboePlayer?.release()
+        oboePlayer = null
     }
 
     companion object {
