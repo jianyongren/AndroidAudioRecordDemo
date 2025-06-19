@@ -10,6 +10,7 @@ import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -97,6 +98,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         (getSystemService(Context.AUDIO_SERVICE) as AudioManager).registerAudioDeviceCallback(audioDeviceCallback, null)
+//        (getSystemService(Context.AUDIO_SERVICE) as AudioManager).getDevices(AudioManager.GET_DEVICES_OUTPUTS).forEach {
+//            Log.d("rjy", "audio output dev id=${it.id}, name=${it.productName}, type=${it.type}")
+//        }
 
         setContent {
             OboeRecordDemoTheme {

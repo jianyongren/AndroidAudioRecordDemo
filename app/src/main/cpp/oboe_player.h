@@ -14,7 +14,7 @@
  * @brief Oboe音频播放器类
  * 负责PCM文件的播放
  */
-class OboePlayer : public oboe::AudioStreamDataCallback {
+class OboePlayer : public oboe::AudioStreamCallback {
 public:
     /**
      * @brief 构造函数
@@ -24,7 +24,7 @@ public:
      * @param isFloat 是否使用浮点数格式
      * @param audioApi 音频API类型
      */
-    OboePlayer(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, int32_t audioApi);
+    OboePlayer(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, int32_t audioApi, int32_t deviceId);
     
     /**
      * @brief 析构函数
@@ -38,6 +38,12 @@ public:
             oboe::AudioStream *audioStream,
             void *audioData,
             int32_t numFrames) override;
+
+    bool onError(oboe::AudioStream *, oboe::Result) override;
+
+    void onErrorBeforeClose(oboe::AudioStream *, oboe::Result) override;
+
+    void onErrorAfterClose(oboe::AudioStream *, oboe::Result) override;
 
     /**
      * @brief 开始播放
@@ -71,6 +77,7 @@ private:
     std::atomic<float> playbackProgress_;  // 播放进度
     std::atomic<int64_t> framesPlayed_;  // 已播放的帧数
     int64_t totalFrames_;  // 总帧数
+    int32_t deviceId = oboe::kUnspecified;
 
     // 缓冲区相关
     static constexpr size_t BUFFER_CAPACITY = 1024 * 1024; // 1MB 缓冲区
@@ -86,6 +93,7 @@ private:
     jobject callbackObject_ = nullptr;
 
     void producerThreadFunc();
+    bool startOboeStream();
     static oboe::AudioApi getAudioApi(int32_t api);
 };
 

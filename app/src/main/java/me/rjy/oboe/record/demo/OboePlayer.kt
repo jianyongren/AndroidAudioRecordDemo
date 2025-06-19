@@ -84,7 +84,8 @@ class OboePlayer(
         sampleRate: Int,
         isStereo: Boolean,
         isFloat: Boolean,
-        audioApi: Int
+        audioApi: Int,
+        deviceId: Int = -1,
     ): Long
 
     private external fun nativeRelease(nativePlayer: Long)

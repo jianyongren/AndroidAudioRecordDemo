@@ -39,3 +39,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     android
     log
     oboe::oboe)
+
+set_target_properties( oboe::oboe PROPERTIES INTERFACE_COMPILE_OPTIONS "-D OBOE_DEBUG=1")

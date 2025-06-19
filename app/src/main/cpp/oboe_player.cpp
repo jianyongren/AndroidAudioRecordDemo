@@ -51,7 +51,7 @@ static void executeInJniThread(F&& callback) {
     }
 }
 
-OboePlayer::OboePlayer(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, int32_t audioApi)
+OboePlayer::OboePlayer(const char* filePath, int32_t sampleRate, bool isStereo, bool isFloat, int32_t audioApi, int32_t deviceId)
     : file_(fopen(filePath, "rb"), fclose)
     , isFloat(isFloat)
     , sampleRate(sampleRate)
@@ -73,6 +73,9 @@ OboePlayer::OboePlayer(const char* filePath, int32_t sampleRate, bool isStereo, 
     }
 
     bytesRead_ = 0;
+    if (deviceId > 0) {
+        this->deviceId = deviceId;
+    }
 }
 
 OboePlayer::~OboePlayer() {
@@ -183,14 +186,20 @@ bool OboePlayer::start() {
     isRunning_ = true;
     producerThread_ = std::make_unique<std::thread>(&OboePlayer::producerThreadFunc, this);
 
+    return startOboeStream();
+}
+
+bool OboePlayer::startOboeStream() {
+    LOGI("startOboeStream");
     oboe::AudioStreamBuilder builder;
     builder.setDirection(oboe::Direction::Output)
+            ->setDeviceId(deviceId)
             ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
             ->setSharingMode(oboe::SharingMode::Exclusive)
             ->setFormat(isFloat ? oboe::AudioFormat::Float : oboe::AudioFormat::I16)
             ->setSampleRate(sampleRate)
             ->setChannelCount(isStereo ? 2 : 1)
-            ->setDataCallback(this)
+            ->setCallback(this)
             ->setAudioApi(getAudioApi(audioApi));
 
     oboe::Result result = builder.openStream(stream_);
@@ -204,7 +213,6 @@ bool OboePlayer::start() {
         LOGE("Failed to start stream. Error: %s", oboe::convertToText(result));
         return false;
     }
-
     return true;
 }
 
@@ -229,4 +237,18 @@ oboe::AudioApi OboePlayer::getAudioApi(int32_t api) {
         case 2: return oboe::AudioApi::OpenSLES;
         default: return oboe::AudioApi::Unspecified;
     }
-} 
+}
+
+bool OboePlayer::onError(oboe::AudioStream *stream, oboe::Result result) {
+    LOGE("onError %s", oboe::convertToText(result));
+    return false;
+}
+
+
+void OboePlayer::onErrorBeforeClose(oboe::AudioStream *stream, oboe::Result error) {
+    LOGE("onErrorBeforeClose %s", oboe::convertToText(error));
+}
+
+void OboePlayer::onErrorAfterClose(oboe::AudioStream *stream, oboe::Result result) {
+    LOGE("onErrorAfterClose %s", oboe::convertToText(result));
+}

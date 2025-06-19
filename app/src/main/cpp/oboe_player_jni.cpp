@@ -16,7 +16,7 @@ extern "C" {
 JNIEXPORT jlong JNICALL
 Java_me_rjy_oboe_record_demo_OboePlayer_createNativePlayer(
         JNIEnv* env, jobject thiz, jstring filePath, jint sampleRate,
-        jboolean isStereo, jboolean isFloat, jint audioApi) {
+        jboolean isStereo, jboolean isFloat, jint audioApi, jint deviceId) {
     
     const char* path = env->GetStringUTFChars(filePath, nullptr);
     if (!path) {
@@ -24,7 +24,7 @@ Java_me_rjy_oboe_record_demo_OboePlayer_createNativePlayer(
         return 0;
     }
 
-    auto* player = new OboePlayer(path, sampleRate, isStereo, isFloat, audioApi);
+    auto* player = new OboePlayer(path, sampleRate, isStereo, isFloat, audioApi, deviceId);
     env->ReleaseStringUTFChars(filePath, path);
 
     if (!player) {
