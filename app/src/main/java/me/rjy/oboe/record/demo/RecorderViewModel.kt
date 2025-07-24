@@ -381,7 +381,9 @@ class RecorderViewModel : ViewModel() {
                     File(pcmPath).delete()
                 }
 
+                // 必须用DirectBuffer，写文件时用get拷贝数据
                 val audioBuffer = ByteBuffer.allocateDirect(bufferSizeInBytes)
+                val byteArray = ByteArray(bufferSizeInBytes) // 循环外分配
                 val os: OutputStream = FileOutputStream(pcmPath)
                 val bos = BufferedOutputStream(os)
                 val dos = DataOutputStream(bos)
@@ -390,11 +392,14 @@ class RecorderViewModel : ViewModel() {
                     Log.d(TAG, "Recording loop started: samplesPerUpdate=$samplesPerUpdate")
 
                     while (!stopRecord) {
+                        audioBuffer.clear() // 每次读取前清空buffer
                         val frameBytes = recorder?.read(audioBuffer, bufferSizeInBytes)
                         if (frameBytes != null && frameBytes > 0) {
-                            dos.write(audioBuffer.array(), 0, frameBytes)
-
+                            audioBuffer.position(0)
+                            audioBuffer.get(byteArray, 0, frameBytes)
+                            dos.write(byteArray, 0, frameBytes)
                             // 计算这一帧数据中的振幅值
+                            audioBuffer.position(0)
                             calculateAmplitude(audioBuffer, frameBytes) { leftAmplitude, rightAmplitude ->
                                 _leftChannelBuffer.write(leftAmplitude)
                                 if (rightAmplitude != null) {

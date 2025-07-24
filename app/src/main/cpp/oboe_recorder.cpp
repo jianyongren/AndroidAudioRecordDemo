@@ -4,7 +4,7 @@
 #include <jni.h>
 #include "logging.h"
 
-#define LOG(...) __android_log_print(ANDROID_LOG_DEBUG, "OboeRecorder", __VA_ARGS__)
+#define LOG_TAG "OboeRecorder"
 
 // 声明外部变量
 extern JavaVM* javaVm;
@@ -37,7 +37,7 @@ OboeRecorder::~OboeRecorder() {
 
 void OboeRecorder::initJniEnv() {
     if (javaVm->AttachCurrentThread(&cachedEnv_, nullptr) != JNI_OK) {
-        LOG("Failed to attach thread to JVM");
+        LOGE("Failed to attach thread to JVM");
         return;
     }
     consumerThreadId_ = std::this_thread::get_id();
@@ -177,13 +177,14 @@ bool OboeRecorder::start() {
 
     oboe::Result result = builder.openStream(stream_);
     if (result != oboe::Result::OK) {
-        LOG("Failed to open stream. Error: %s", oboe::convertToText(result));
+        LOGE("Failed to open stream. Error: %s", oboe::convertToText(result));
         return false;
     }
+    LOGI("oboe input stream: \n%s", oboe::convertToText(stream_.get()));
 
     result = stream_->requestStart();
     if (result != oboe::Result::OK) {
-        LOG("Failed to start stream. Error: %s", oboe::convertToText(result));
+        LOGE("Failed to start stream. Error: %s", oboe::convertToText(result));
         return false;
     }
 
