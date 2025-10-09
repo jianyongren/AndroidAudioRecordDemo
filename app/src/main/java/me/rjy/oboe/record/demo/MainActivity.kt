@@ -21,6 +21,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -107,18 +110,19 @@ class MainActivity : ComponentActivity() {
                 Surface(
                     modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background
                 ) {
-                    Column(
+                    LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(11.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(11.dp)
+                        contentPadding = PaddingValues(11.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // 录音参数控制部分
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                            color = MaterialTheme.colorScheme.surface
-                        ) {
+                        item {
+                            // 录音参数控制部分
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                color = MaterialTheme.colorScheme.surface
+                            ) {
                             Column(
                                 modifier = Modifier.padding(11.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -132,34 +136,53 @@ class MainActivity : ComponentActivity() {
                                 Divider(modifier = Modifier.padding(vertical = 6.dp))
 
                                 val configuration = LocalConfiguration.current
-                                LazyVerticalGrid(
-                                    columns = GridCells.Fixed(if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 2 else 1),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    item {
+                                val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+                                if (isLandscape) {
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Box(modifier = Modifier.weight(1f)) { RecordMethodSection(viewModel) }
+                                            Box(modifier = Modifier.weight(1f)) { AudioApiSection(viewModel) }
+                                        }
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Box(modifier = Modifier.weight(1f)) { AudioSourceSection(viewModel) }
+                                            Box(modifier = Modifier.weight(1f)) { RecordDeviceSection(viewModel) }
+                                        }
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Box(modifier = Modifier.weight(1f)) { ChannelSection(viewModel) }
+                                            Box(modifier = Modifier.weight(1f)) { SampleRateSection(viewModel) }
+                                        }
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Box(modifier = Modifier.weight(1f)) { DataFormatSection(viewModel) }
+                                            Box(modifier = Modifier.weight(1f)) { PlaybackMethodSection(viewModel) }
+                                        }
+                                    }
+                                } else {
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
                                         RecordMethodSection(viewModel)
-                                    }
-                                    item {
                                         AudioApiSection(viewModel)
-                                    }
-                                    item {
                                         AudioSourceSection(viewModel)
-                                    }
-                                    item {
                                         RecordDeviceSection(viewModel)
-                                    }
-                                    item {
                                         ChannelSection(viewModel)
-                                    }
-                                    item {
                                         SampleRateSection(viewModel)
-                                    }
-                                    item {
                                         DataFormatSection(viewModel)
-                                    }
-                                    item {
                                         PlaybackMethodSection(viewModel)
                                     }
                                 }
@@ -169,24 +192,60 @@ class MainActivity : ComponentActivity() {
                                     viewModel.refreshAudioDevices(this@MainActivity)
                                 }
                             }
+                            }
                         }
                         
-                        // 操作按钮部分
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                            color = MaterialTheme.colorScheme.surface
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(11.dp),
-                                verticalArrangement = Arrangement.spacedBy(11.dp)
+                        item {
+                            // 操作按钮部分
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                color = MaterialTheme.colorScheme.surface
                             ) {
-                                if (viewModel.isStereo.value) {
-                                    // 立体声模式：显示两个波形图
-                                    Column(
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
+                                Column(
+                                    modifier = Modifier.padding(11.dp),
+                                    verticalArrangement = Arrangement.spacedBy(11.dp)
+                                ) {
+                                    if (viewModel.isStereo.value) {
+                                        // 立体声模式：显示两个波形图
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            if (viewModel.pcmPlayingStatus.value) {
+                                                // 播放状态：显示播放波形
+                                                WaveformPlayView(
+                                                    waveform = viewModel.playbackWaveform.value,
+                                                    progress = viewModel.playbackProgress.value,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            } else {
+                                                // 录音状态：显示实时波形
+                                                Text(
+                                                    text = "左声道",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                WaveformView(
+                                                    waveformBuffer = viewModel.leftChannelBuffer,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                )
+
+                                                Text(
+                                                    text = "右声道",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                WaveformView(
+                                                    waveformBuffer = viewModel.rightChannelBuffer,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        // 单声道模式：显示一个波形图
                                         if (viewModel.pcmPlayingStatus.value) {
                                             // 播放状态：显示播放波形
                                             WaveformPlayView(
@@ -196,95 +255,64 @@ class MainActivity : ComponentActivity() {
                                             )
                                         } else {
                                             // 录音状态：显示实时波形
-                                            Text(
-                                                text = "左声道",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
                                             WaveformView(
                                                 waveformBuffer = viewModel.leftChannelBuffer,
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                             )
-
-                                            Text(
-                                                text = "右声道",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            WaveformView(
-                                                waveformBuffer = viewModel.rightChannelBuffer,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                            )
                                         }
                                     }
-                                } else {
-                                    // 单声道模式：显示一个波形图
-                                    if (viewModel.pcmPlayingStatus.value) {
-                                        // 播放状态：显示播放波形
-                                        WaveformPlayView(
-                                            waveform = viewModel.playbackWaveform.value,
-                                            progress = viewModel.playbackProgress.value,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    } else {
-                                        // 录音状态：显示实时波形
-                                        WaveformView(
-                                            waveformBuffer = viewModel.leftChannelBuffer,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                            )
-                                    }
-                                }
 
-                                // 使用新的操作按钮组件
-                                OperationButtons(
-                                    viewModel = viewModel,
-                                    startRecord = { startRecord() },
-                                    context = this@MainActivity
-                                )
+                                    // 使用新的操作按钮组件
+                                    OperationButtons(
+                                        viewModel = viewModel,
+                                        startRecord = { startRecord() },
+                                        context = this@MainActivity
+                                    )
+                                }
                             }
                         }
 
-                        // 添加文件路径显示
-                        viewModel.recordedFilePath.value?.let { path ->
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = MaterialTheme.shapes.medium,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-                                color = MaterialTheme.colorScheme.surface
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(11.dp)
+                        item {
+                            // 添加文件路径显示
+                            viewModel.recordedFilePath.value?.let { path ->
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = MaterialTheme.shapes.medium,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                                    color = MaterialTheme.colorScheme.surface
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Column(
+                                        modifier = Modifier.padding(11.dp)
                                     ) {
-                                        Column {
-                                            Text(
-                                                text = "录音文件路径:",
-                                                style = MaterialTheme.typography.titleSmall,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            Text(
-                                                text = path,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                modifier = Modifier.padding(top = 3.dp)
-                                            )
-                                        }
-                                        IconButton(onClick = {
-                                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            val clip = ClipData.newPlainText("录音文件路径", path)
-                                            clipboard.setPrimaryClip(clip)
-                                            Toast.makeText(this@MainActivity, "路径已复制", Toast.LENGTH_SHORT).show()
-                                        }) {
-                                            Icon(
-                                                imageVector = Icons.Outlined.ContentCopy,
-                                                contentDescription = "复制路径"
-                                            )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = "录音文件路径:",
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Text(
+                                                    text = path,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    modifier = Modifier.padding(top = 3.dp)
+                                                )
+                                            }
+                                            IconButton(onClick = {
+                                                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                val clip = ClipData.newPlainText("录音文件路径", path)
+                                                clipboard.setPrimaryClip(clip)
+                                                Toast.makeText(this@MainActivity, "路径已复制", Toast.LENGTH_SHORT).show()
+                                            }) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.ContentCopy,
+                                                    contentDescription = "复制路径"
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -759,7 +787,9 @@ private fun PcmFileSelectDialog(
         },
         title = { Text(if (viewModel.isEditMode.value) "选择要删除的文件" else "选择PCM文件") },
         text = {
-            LazyColumn {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 360.dp)
+            ) {
                 items(viewModel.pcmFileList.value) { fileInfo ->
                     Row(
                         modifier = Modifier
