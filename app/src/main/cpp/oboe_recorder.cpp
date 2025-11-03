@@ -24,7 +24,7 @@ OboeRecorder::OboeRecorder(const char* filePath, int32_t sampleRate, bool isSter
     , deviceId(deviceId)
     , audioSource(audioSource)
     , audioApi(audioApi)
-    , ringBuffer_(std::make_unique<RingBuffer>(BUFFER_CAPACITY))
+    , ringBuffer_(std::make_unique<SimpleRingBuffer>(BUFFER_CAPACITY))
     , isRunning_(false)
     , cachedEnv_(nullptr)
     , audioDataArray_(nullptr)

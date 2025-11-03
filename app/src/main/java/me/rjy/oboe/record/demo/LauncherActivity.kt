@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import me.rjy.oboe.record.demo.ui.theme.OboeRecordDemoTheme
 
 class LauncherActivity : ComponentActivity() {
@@ -30,6 +31,9 @@ class LauncherActivity : ComponentActivity() {
                         },
                         onGoLocalPlayer = {
                             startActivity(Intent(this, LocalPlayerActivity::class.java))
+                        },
+                        onGoLatencyTester = {
+                            startActivity(Intent(this, LatencyTesterActivity::class.java))
                         }
                     )
                 }
@@ -42,6 +46,7 @@ class LauncherActivity : ComponentActivity() {
 private fun LauncherScreen(
     onGoRecord: () -> Unit,
     onGoLocalPlayer: () -> Unit,
+    onGoLatencyTester: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -50,9 +55,10 @@ private fun LauncherScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)
     ) {
-        Text(text = "请选择功能", style = MaterialTheme.typography.titleLarge)
-        Button(onClick = onGoRecord) { Text(text = "录制页面") }
-        Button(onClick = onGoLocalPlayer) { Text(text = "本地播放页面") }
+        Text(text = stringResource(id = R.string.launcher_select_function), style = MaterialTheme.typography.titleLarge)
+        Button(onClick = onGoRecord) { Text(text = stringResource(id = R.string.launcher_go_record)) }
+        Button(onClick = onGoLocalPlayer) { Text(text = stringResource(id = R.string.launcher_go_local_player)) }
+        Button(onClick = onGoLatencyTester) { Text(text = stringResource(id = R.string.launcher_go_latency_tester)) }
     }
 }
 

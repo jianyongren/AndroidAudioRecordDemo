@@ -8,7 +8,7 @@
 #include <atomic>
 #include <jni.h>
 #include <oboe/Oboe.h>
-#include "ring_buffer.h"
+#include "simple_ring_buffer.h"
 #include "data_writer.h"
 
 /**
@@ -67,7 +67,7 @@ private:
 
     // 缓冲区相关
     static constexpr size_t BUFFER_CAPACITY = 1024 * 1024; // 1MB 缓冲区
-    std::unique_ptr<RingBuffer> ringBuffer_;
+    std::unique_ptr<SimpleRingBuffer> ringBuffer_;
     std::unique_ptr<std::thread> consumerThread_;
     std::mutex mutex_;
     std::condition_variable dataReady_;
