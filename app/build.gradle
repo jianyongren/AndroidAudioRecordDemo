@@ -30,9 +30,26 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            storeFile file("../signature.jks")
+            keyAlias "oboedebug"
+            keyPassword "oboedebug"
+            storePassword "oboedebug"
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+
     buildTypes {
+        debug {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
         release {
             minifyEnabled false
+            signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

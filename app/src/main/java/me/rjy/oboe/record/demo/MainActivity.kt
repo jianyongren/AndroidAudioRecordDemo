@@ -356,7 +356,7 @@ class MainActivity : ComponentActivity() {
         private const val TAG = "MainActivity"
 
         init {
-            System.loadLibrary("demo")
+            System.loadLibrary("oboe_recorder_demo")
         }
     }
 }

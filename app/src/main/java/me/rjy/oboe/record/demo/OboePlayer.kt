@@ -13,7 +13,7 @@ class OboePlayer(
         private const val TAG = "OboePlayer"
         
         init {
-            System.loadLibrary("demo")
+            System.loadLibrary("oboe_recorder_demo")
         }
 
         // 音频API类型
