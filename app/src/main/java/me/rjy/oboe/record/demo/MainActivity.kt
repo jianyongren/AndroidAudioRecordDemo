@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
 import me.rjy.oboe.record.demo.ui.WaveformPlayView
 import me.rjy.oboe.record.demo.ui.WaveformView
@@ -111,11 +112,11 @@ class MainActivity : ComponentActivity() {
                     viewModel.errorMessage.value?.let { errorMsg ->
                         AlertDialog(
                             onDismissRequest = { viewModel.clearError() },
-                            title = { Text("录音错误") },
+                            title = { Text(stringResource(id = R.string.main_recording_error)) },
                             text = { Text(errorMsg) },
                             confirmButton = {
                                 TextButton(onClick = { viewModel.clearError() }) {
-                                    Text("确定")
+                                    Text(stringResource(id = R.string.main_ok))
                                 }
                             }
                         )
@@ -139,7 +140,7 @@ class MainActivity : ComponentActivity() {
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
-                                    text = "录音参数设置",
+                                    text = stringResource(id = R.string.main_recording_params),
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -233,7 +234,7 @@ class MainActivity : ComponentActivity() {
                                             } else {
                                                 // 录音状态：显示实时波形
                                                 Text(
-                                                    text = "左声道",
+                                                    text = stringResource(id = R.string.main_left_channel),
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     color = MaterialTheme.colorScheme.primary
                                                 )
@@ -244,7 +245,7 @@ class MainActivity : ComponentActivity() {
                                                 )
 
                                                 Text(
-                                                    text = "右声道",
+                                                    text = stringResource(id = R.string.main_right_channel),
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     color = MaterialTheme.colorScheme.primary
                                                 )
@@ -303,7 +304,7 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             Column {
                                                 Text(
-                                                    text = "录音文件路径:",
+                                                    text = stringResource(id = R.string.main_record_file_path),
                                                     style = MaterialTheme.typography.titleSmall,
                                                     color = MaterialTheme.colorScheme.primary
                                                 )
@@ -315,13 +316,13 @@ class MainActivity : ComponentActivity() {
                                             }
                                             IconButton(onClick = {
                                                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                val clip = ClipData.newPlainText("录音文件路径", path)
+                                                val clip = ClipData.newPlainText(getString(R.string.main_record_file_path), path)
                                                 clipboard.setPrimaryClip(clip)
-                                                Toast.makeText(this@MainActivity, "路径已复制", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(this@MainActivity, getString(R.string.main_path_copied), Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(
                                                     imageVector = Icons.Outlined.ContentCopy,
-                                                    contentDescription = "复制路径"
+                                                    contentDescription = stringResource(id = R.string.main_copy_path)
                                                 )
                                             }
                                         }
@@ -384,7 +385,7 @@ private fun RecordMethodSection(viewModel: RecorderViewModel) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "录音方式：",
+            text = stringResource(id = R.string.main_record_method),
             style = MaterialTheme.typography.bodyMedium,
         )
         Row(
@@ -422,7 +423,7 @@ private fun AudioApiSection(viewModel: RecorderViewModel) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
-            text = "音频API:",
+            text = stringResource(id = R.string.main_audio_api),
             style = MaterialTheme.typography.bodyMedium,
             color = if (viewModel.useOboe.value) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
         )
@@ -480,7 +481,7 @@ private fun AudioSourceSection(viewModel: RecorderViewModel) {
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(text = "音频源:", style = MaterialTheme.typography.bodyMedium)
+        Text(text = stringResource(id = R.string.main_audio_source), style = MaterialTheme.typography.bodyMedium)
         var audioSourceExpanded by remember { mutableStateOf(false) }
         val currentSource = viewModel.audioSources.find {
             it.id == viewModel.selectedAudioSource.value
@@ -531,7 +532,7 @@ private fun RecordDeviceSection(viewModel: RecorderViewModel) {
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(text = "录音设备:", style = MaterialTheme.typography.bodyMedium)
+        Text(text = stringResource(id = R.string.main_record_device), style = MaterialTheme.typography.bodyMedium)
         var expanded by remember { mutableStateOf(false) }
         val currentDevice = viewModel.audioDevices.value.find {
             it.id == viewModel.selectedDeviceId.value
@@ -581,7 +582,7 @@ private fun ChannelSection(viewModel: RecorderViewModel) {
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(text = "声道:", style = MaterialTheme.typography.bodyMedium)
+        Text(text = stringResource(id = R.string.main_channel), style = MaterialTheme.typography.bodyMedium)
         Row(
             horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically,
@@ -597,7 +598,7 @@ private fun ChannelSection(viewModel: RecorderViewModel) {
                     onClick = { viewModel.setIsStereo(false) }
                 )
                 Text(
-                    text = "单声道",
+                    text = stringResource(id = R.string.main_mono),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.clickable { viewModel.setIsStereo(false) }
                 )
@@ -610,7 +611,7 @@ private fun ChannelSection(viewModel: RecorderViewModel) {
                     onClick = { viewModel.setIsStereo(true) }
                 )
                 Text(
-                    text = "立体声",
+                    text = stringResource(id = R.string.main_stereo),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.clickable { viewModel.setIsStereo(true) }
                 )
@@ -627,7 +628,7 @@ private fun SampleRateSection(viewModel: RecorderViewModel) {
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(text = "采样率:", style = MaterialTheme.typography.bodyMedium)
+        Text(text = stringResource(id = R.string.main_sample_rate), style = MaterialTheme.typography.bodyMedium)
         var sampleRateExpanded by remember { mutableStateOf(false) }
         ExposedDropdownMenuBox(
             expanded = sampleRateExpanded,
@@ -674,7 +675,7 @@ private fun DataFormatSection(viewModel: RecorderViewModel) {
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(text = "数据格式:", style = MaterialTheme.typography.bodyMedium)
+        Text(text = stringResource(id = R.string.main_data_format), style = MaterialTheme.typography.bodyMedium)
         Row(
             horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically,
@@ -742,7 +743,7 @@ private fun PlaybackMethodSection(viewModel: RecorderViewModel) {
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(text = "播放方式:", style = MaterialTheme.typography.bodyMedium)
+        Text(text = stringResource(id = R.string.main_playback_method), style = MaterialTheme.typography.bodyMedium)
         Row(
             horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically,
@@ -796,7 +797,7 @@ private fun PcmFileSelectDialog(
                 onDismissRequest()
             }
         },
-        title = { Text(if (viewModel.isEditMode.value) "选择要删除的文件" else "选择PCM文件") },
+        title = { Text(if (viewModel.isEditMode.value) stringResource(id = R.string.main_select_delete_file) else stringResource(id = R.string.main_select_pcm_file)) },
         text = {
             LazyColumn(
                 modifier = Modifier.heightIn(max = 360.dp)
@@ -873,7 +874,7 @@ private fun PcmFileSelectDialog(
                             viewModel.toggleEditMode()
                         }
                     ) {
-                        Text("取消")
+                        Text(stringResource(id = R.string.cancel))
                     }
                     Button(
                         onClick = {
@@ -884,11 +885,11 @@ private fun PcmFileSelectDialog(
                         },
                         enabled = viewModel.selectedFiles.value.isNotEmpty()
                     ) {
-                        Text("删除")
+                        Text(stringResource(id = R.string.main_delete))
                     }
                 } else {
                     TextButton(onClick = onDismissRequest) {
-                        Text("取消")
+                        Text(stringResource(id = R.string.cancel))
                     }
                 }
             }
@@ -919,7 +920,7 @@ private fun OperationButtons(
             },
             enabled = !viewModel.pcmPlayingStatus.value
         ) {
-            Text(text = if (viewModel.recordingStatus.value) "停止录制" else "开始录制")
+            Text(text = if (viewModel.recordingStatus.value) stringResource(id = R.string.main_stop_recording) else stringResource(id = R.string.main_start_recording))
         }
         
         Button(
@@ -933,7 +934,7 @@ private fun OperationButtons(
             },
             enabled = !viewModel.recordingStatus.value
         ) {
-            Text(text = if (viewModel.pcmPlayingStatus.value) "停止播放" else "播放PCM")
+            Text(text = if (viewModel.pcmPlayingStatus.value) stringResource(id = R.string.main_stop_playback) else stringResource(id = R.string.main_play_pcm))
         }
     }
 

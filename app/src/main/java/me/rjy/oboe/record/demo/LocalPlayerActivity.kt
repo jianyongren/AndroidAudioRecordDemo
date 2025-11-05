@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
@@ -245,7 +246,7 @@ class LocalPlayerActivity : ComponentActivity() {
             if (granted) {
                 vm.loadMedia(this, audio = true, video = false)
             } else {
-                Toast.makeText(this, "音频读取权限被拒绝", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.local_player_audio_permission_denied), Toast.LENGTH_SHORT).show()
             }
         }
     private val requestVideoPermission =
@@ -254,7 +255,7 @@ class LocalPlayerActivity : ComponentActivity() {
             if (granted) {
                 vm.loadMedia(this, audio = false, video = true)
             } else {
-                Toast.makeText(this, "视频读取权限被拒绝", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.local_player_video_permission_denied), Toast.LENGTH_SHORT).show()
             }
         }
     private val requestMediaPermissions =
@@ -265,7 +266,7 @@ class LocalPlayerActivity : ComponentActivity() {
             if (audioGranted || videoGranted) {
                 vm.loadMedia(this, audio = audioGranted, video = videoGranted)
             } else {
-                Toast.makeText(this, "媒体读取权限被拒绝", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.local_player_media_permission_denied), Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -284,9 +285,9 @@ class LocalPlayerActivity : ComponentActivity() {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(text = "本地播放", style = MaterialTheme.typography.titleLarge)
+                                Text(text = stringResource(id = R.string.local_player_title), style = MaterialTheme.typography.titleLarge)
                                 IconButton(onClick = { finish() }) {
-                                    Icon(imageVector = Icons.Outlined.Close, contentDescription = "关闭")
+                                    Icon(imageVector = Icons.Outlined.Close, contentDescription = stringResource(id = R.string.local_player_close))
                                 }
                             }
                         }
@@ -312,7 +313,7 @@ class LocalPlayerActivity : ComponentActivity() {
                 vm.loadMedia(this, audio = true, video = false)
             } else {
                 requestAudioPermission.launch(Manifest.permission.READ_MEDIA_AUDIO)
-                Toast.makeText(this, "请求音频读取权限", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.local_player_request_audio_permission), Toast.LENGTH_SHORT).show()
             }
         } else {
             val has = ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
@@ -321,7 +322,7 @@ class LocalPlayerActivity : ComponentActivity() {
                 vm.loadMedia(this, audio = true, video = false)
             } else {
                 requestAudioPermission.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
-                Toast.makeText(this, "请求存储读取权限", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.local_player_request_storage_permission), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -335,7 +336,7 @@ class LocalPlayerActivity : ComponentActivity() {
                 vm.loadMedia(this, audio = false, video = true)
             } else {
                 requestVideoPermission.launch(Manifest.permission.READ_MEDIA_VIDEO)
-                Toast.makeText(this, "请求视频读取权限", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.local_player_request_video_permission), Toast.LENGTH_SHORT).show()
             }
         } else {
             val has = ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
@@ -344,7 +345,7 @@ class LocalPlayerActivity : ComponentActivity() {
                 vm.loadMedia(this, audio = false, video = true)
             } else {
                 requestVideoPermission.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
-                Toast.makeText(this, "请求存储读取权限", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.local_player_request_storage_permission), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -359,7 +360,7 @@ class LocalPlayerActivity : ComponentActivity() {
                 vm.loadMedia(this, audio = audioGranted, video = videoGranted)
             } else {
                 requestMediaPermissions.launch(arrayOf(Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_VIDEO))
-                Toast.makeText(this, "请求媒体读取权限", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.local_player_request_media_permission), Toast.LENGTH_SHORT).show()
             }
         } else {
             val has = ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
@@ -368,7 +369,7 @@ class LocalPlayerActivity : ComponentActivity() {
                 vm.loadMedia(this, audio = true, video = true)
             } else {
                 requestAudioPermission.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
-                Toast.makeText(this, "请求存储读取权限", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.local_player_request_storage_permission), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -417,7 +418,7 @@ private fun LocalPlayerScreen(
     ) {
         // 自动加载，无需按钮
         if (vm.isLoading.value) {
-            Text(text = "加载中…", style = MaterialTheme.typography.bodyMedium)
+            Text(text = stringResource(id = R.string.local_player_loading), style = MaterialTheme.typography.bodyMedium)
         }
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -454,7 +455,7 @@ private fun LocalPlayerScreen(
                             Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    Text(text = "播放", color = MaterialTheme.colorScheme.primary)
+                    Text(text = stringResource(id = R.string.local_player_play), color = MaterialTheme.colorScheme.primary)
                 }
             }
         }
