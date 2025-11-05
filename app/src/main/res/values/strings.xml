@@ -1,20 +1,19 @@
 <resources>
-    <string name="app_name">OboeRecordDemo</string>
-  <string name="title_recording_latency_test">Recording Latency Test</string>
-  <string name="using_builtin_audio">Using built-in audio: numbers_1_to_30.mp3</string>
-  <string name="detecting_latency">Detecting latency…</string>
-  <string name="average_delay">Average delay: %1$.2f ms</string>
-  <string name="highest_correlation_windows">Windows with highest correlation:</string>
-  <string name="window_info">Window%1$d: %2$.2f ms (Correlation: %3$.4f)</string>
-  <string name="start_test">Start Test</string>
-  <string name="processing">Processing…</string>
-  <string name="stop_and_save">Stop and Save</string>
-  <string name="play_audio">Play</string>
-  <string name="share_audio">Share</string>
-  <string name="select_action">Select Action</string>
-  <string name="cancel">Cancel</string>
-  <string name="output_file">Output file: %1$s</string>
-    <string name="file_not_exists">文件不存在</string>
+    <string name="app_name" translatable="false">AudioRecordDemo</string>
+    <string name="title_recording_latency_test">Recording Latency Test</string>
+    <string name="using_builtin_audio">Using built-in audio: numbers_1_to_30.mp3</string>
+    <string name="detecting_latency">Detecting latency…</string>
+    <string name="average_delay">Average delay: %1$.2f ms</string>
+    <string name="highest_correlation_windows">Windows with highest correlation:</string>
+    <string name="window_info">Window%1$d: %2$.2f ms (Correlation: %3$.4f)</string>
+    <string name="start_test">Start Test</string>
+    <string name="processing">Processing…</string>
+    <string name="stop_and_save">Stop and Save</string>
+    <string name="play_audio">Play</string>
+    <string name="share_audio">Share</string>
+    <string name="select_action">Select Action</string>
+    <string name="cancel">Cancel</string>
+    <string name="output_file">Output file: %1$s</string>
     <!-- Launcher strings -->
     <string name="launcher_select_function">Please select a feature</string>
     <string name="launcher_go_record">Record</string>

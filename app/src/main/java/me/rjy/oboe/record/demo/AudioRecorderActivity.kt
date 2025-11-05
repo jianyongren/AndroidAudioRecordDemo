@@ -380,36 +380,51 @@ class AudioRecorderActivity : ComponentActivity() {
 @Composable
 private fun RecordMethodSection(viewModel: RecorderViewModel) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth()
     ) {
         Text(
             text = stringResource(id = R.string.main_record_method),
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyMedium
         )
-        Row(
-            horizontalArrangement = Arrangement.Start,
-            verticalAlignment = Alignment.CenterVertically,
+        var recordMethodExpanded by remember { mutableStateOf(false) }
+        val recordMethods = listOf("Oboe" to true, "AudioRecord" to false)
+        val currentMethod = recordMethods.find { it.second == viewModel.useOboe.value }?.first ?: "Oboe"
+        ExposedDropdownMenuBox(
+            expanded = recordMethodExpanded,
+            onExpandedChange = { recordMethodExpanded = it },
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp)
         ) {
-            RadioButton(
-                selected = viewModel.useOboe.value,
-                onClick = { viewModel.setUseOboe(true) }
+            TextField(
+                value = currentMethod,
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = recordMethodExpanded) },
+                modifier = Modifier.menuAnchor(),
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                ),
+                textStyle = MaterialTheme.typography.bodyMedium
             )
-            Text(
-                text = "Oboe",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.clickable { viewModel.setUseOboe(true) }
-            )
-            RadioButton(
-                selected = !viewModel.useOboe.value,
-                onClick = { viewModel.setUseOboe(false) }
-            )
-            Text(
-                text = "AudioRecord",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.clickable { viewModel.setUseOboe(false) }
-            )
+            ExposedDropdownMenu(
+                expanded = recordMethodExpanded,
+                onDismissRequest = { recordMethodExpanded = false }
+            ) {
+                recordMethods.forEach { (name, value) ->
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        onClick = {
+                            viewModel.setUseOboe(value)
+                            recordMethodExpanded = false
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -736,6 +751,7 @@ private fun EchoCancelSection(viewModel: RecorderViewModel) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlaybackMethodSection(viewModel: RecorderViewModel) {
     Row(
@@ -743,39 +759,46 @@ private fun PlaybackMethodSection(viewModel: RecorderViewModel) {
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(text = stringResource(id = R.string.main_playback_method), style = MaterialTheme.typography.bodyMedium)
-        Row(
-            horizontalArrangement = Arrangement.Start,
-            verticalAlignment = Alignment.CenterVertically,
+        Text(
+            text = stringResource(id = R.string.main_playback_method),
+            style = MaterialTheme.typography.bodyMedium
+        )
+        var playbackMethodExpanded by remember { mutableStateOf(false) }
+        val playbackMethods = listOf("AudioTrack" to false, "Oboe" to true)
+        val currentMethod = playbackMethods.find { it.second == viewModel.useOboePlayback.value }?.first ?: "Oboe"
+        ExposedDropdownMenuBox(
+            expanded = playbackMethodExpanded,
+            onExpandedChange = { playbackMethodExpanded = it },
             modifier = Modifier
                 .weight(1f)
                 .padding(start = 8.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            TextField(
+                value = currentMethod,
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = playbackMethodExpanded) },
+                modifier = Modifier.menuAnchor(),
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                ),
+                textStyle = MaterialTheme.typography.bodyMedium
+            )
+            ExposedDropdownMenu(
+                expanded = playbackMethodExpanded,
+                onDismissRequest = { playbackMethodExpanded = false }
             ) {
-                RadioButton(
-                    selected = !viewModel.useOboePlayback.value,
-                    onClick = { viewModel.setUseOboePlayback(false) }
-                )
-                Text(
-                    text = "AudioTrack",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.clickable { viewModel.setUseOboePlayback(false) }
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RadioButton(
-                    selected = viewModel.useOboePlayback.value,
-                    onClick = { viewModel.setUseOboePlayback(true) }
-                )
-                Text(
-                    text = "Oboe",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.clickable { viewModel.setUseOboePlayback(true) }
-                )
+                playbackMethods.forEach { (name, value) ->
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        onClick = {
+                            viewModel.setUseOboePlayback(value)
+                            playbackMethodExpanded = false
+                        }
+                    )
+                }
             }
         }
     }
