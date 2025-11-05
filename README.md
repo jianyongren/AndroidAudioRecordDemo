@@ -90,7 +90,7 @@ The application requires the following permissions:
 ## Screenshots
 
 <p align="center">
-  <img src="./docs/audio_recorder_zh.png" alt="App Screenshot" width="45%" />
+  <img src="./docs/audio_recorder_en.png" alt="App Screenshot" width="45%" />
   &nbsp;&nbsp;
-  <img src="./docs/audio_recorder_latency_test_zh.png" alt="Latency Test" width="45%" />
+  <img src="./docs/audio_recorder_latency_test_en.png" alt="Latency Test" width="45%" />
 </p>
