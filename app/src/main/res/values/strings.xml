@@ -65,4 +65,21 @@
     <string name="local_player_request_video_permission">Request video read permission</string>
     <string name="local_player_request_storage_permission">Request storage read permission</string>
     <string name="local_player_request_media_permission">Request media read permission</string>
+    <!-- Audio source names -->
+    <string name="audio_source_default">Default</string>
+    <string name="audio_source_mic">Microphone</string>
+    <string name="audio_source_voice_communication">Voice Call</string>
+    <string name="audio_source_voice_recognition">Voice Recognition</string>
+    <string name="audio_source_camcorder">Camcorder</string>
+    <string name="audio_source_unprocessed">Unprocessed</string>
+    <string name="audio_source_voice_performance">Performance</string>
+    <!-- Audio device names -->
+    <string name="audio_device_default">Default Device</string>
+    <string name="audio_device_builtin_mic">Built-in Microphone</string>
+    <string name="audio_device_usb">USB Device</string>
+    <string name="audio_device_bluetooth">Bluetooth Device</string>
+    <string name="audio_device_wired_headset">Wired Headset</string>
+    <string name="audio_device_fm_tuner">FM Tuner</string>
+    <string name="audio_device_telephony">Telephony</string>
+    <string name="audio_device_other">Other %1$d</string>
 </resources>

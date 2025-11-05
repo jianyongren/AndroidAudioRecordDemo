@@ -104,18 +104,19 @@ class RecorderViewModel : ViewModel() {
         val name: String
     )
 
-    val audioSources = mutableListOf(
-        AudioSourceInfo(MediaRecorder.AudioSource.DEFAULT, "默认"),
-        AudioSourceInfo(MediaRecorder.AudioSource.MIC, "麦克风"),
-        AudioSourceInfo(MediaRecorder.AudioSource.VOICE_COMMUNICATION, "语音通话"),
-        AudioSourceInfo(MediaRecorder.AudioSource.VOICE_RECOGNITION, "语音识别"),
-        AudioSourceInfo(MediaRecorder.AudioSource.CAMCORDER, "摄像机"),
-        AudioSourceInfo(MediaRecorder.AudioSource.UNPROCESSED, "未处理")
-    ).apply {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            add(AudioSourceInfo(MediaRecorder.AudioSource.VOICE_PERFORMANCE, "演出"))
+    val audioSources: List<AudioSourceInfo>
+        get() = mutableListOf(
+            AudioSourceInfo(MediaRecorder.AudioSource.DEFAULT, App.context.getString(R.string.audio_source_default)),
+            AudioSourceInfo(MediaRecorder.AudioSource.MIC, App.context.getString(R.string.audio_source_mic)),
+            AudioSourceInfo(MediaRecorder.AudioSource.VOICE_COMMUNICATION, App.context.getString(R.string.audio_source_voice_communication)),
+            AudioSourceInfo(MediaRecorder.AudioSource.VOICE_RECOGNITION, App.context.getString(R.string.audio_source_voice_recognition)),
+            AudioSourceInfo(MediaRecorder.AudioSource.CAMCORDER, App.context.getString(R.string.audio_source_camcorder)),
+            AudioSourceInfo(MediaRecorder.AudioSource.UNPROCESSED, App.context.getString(R.string.audio_source_unprocessed))
+        ).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(AudioSourceInfo(MediaRecorder.AudioSource.VOICE_PERFORMANCE, App.context.getString(R.string.audio_source_voice_performance)))
+            }
         }
-    }
 
     val recordedFilePath = mutableStateOf<String?>(null)
     val selectedDeviceId = mutableIntStateOf(0) // 选中的录音设备ID
@@ -276,7 +277,7 @@ class RecorderViewModel : ViewModel() {
         // 添加默认设备
         deviceList.add(AudioDevice(
             id = 0,  // 对应 oboe::kUnspecified
-            name = "默认设备",
+            name = context.getString(R.string.audio_device_default),
         ))
 
         if (useOboe.value) {
@@ -299,19 +300,20 @@ class RecorderViewModel : ViewModel() {
     }
 
     private fun getInputDeviceName(device: AudioDeviceInfo): String {
+        val context = App.context
         val address = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             device.address
         } else {
             ""
         }
         val name = when(device.type) {
-            AudioDeviceInfo.TYPE_BUILTIN_MIC -> "内置麦克风"
-            AudioDeviceInfo.TYPE_USB_DEVICE -> "USB设备"
-            AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "蓝牙设备"
-            AudioDeviceInfo.TYPE_WIRED_HEADSET -> "有线耳机"
-            AudioDeviceInfo.TYPE_FM_TUNER -> "FM调频"
-            AudioDeviceInfo.TYPE_TELEPHONY -> "电话通话"
-            else -> "其他${device.type}"
+            AudioDeviceInfo.TYPE_BUILTIN_MIC -> context.getString(R.string.audio_device_builtin_mic)
+            AudioDeviceInfo.TYPE_USB_DEVICE -> context.getString(R.string.audio_device_usb)
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> context.getString(R.string.audio_device_bluetooth)
+            AudioDeviceInfo.TYPE_WIRED_HEADSET -> context.getString(R.string.audio_device_wired_headset)
+            AudioDeviceInfo.TYPE_FM_TUNER -> context.getString(R.string.audio_device_fm_tuner)
+            AudioDeviceInfo.TYPE_TELEPHONY -> context.getString(R.string.audio_device_telephony)
+            else -> context.getString(R.string.audio_device_other, device.type)
         }
         return "${device.productName}-$name$address"
     }

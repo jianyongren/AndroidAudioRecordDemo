@@ -63,6 +63,23 @@
     <string name="local_player_request_video_permission">動画読み取り権限をリクエスト</string>
     <string name="local_player_request_storage_permission">ストレージ読み取り権限をリクエスト</string>
     <string name="local_player_request_media_permission">メディア読み取り権限をリクエスト</string>
+    <!-- Audio source names -->
+    <string name="audio_source_default">デフォルト</string>
+    <string name="audio_source_mic">マイク</string>
+    <string name="audio_source_voice_communication">通話</string>
+    <string name="audio_source_voice_recognition">音声認識</string>
+    <string name="audio_source_camcorder">カメラ</string>
+    <string name="audio_source_unprocessed">未処理</string>
+    <string name="audio_source_voice_performance">パフォーマンス</string>
+    <!-- Audio device names -->
+    <string name="audio_device_default">デフォルトデバイス</string>
+    <string name="audio_device_builtin_mic">内蔵マイク</string>
+    <string name="audio_device_usb">USBデバイス</string>
+    <string name="audio_device_bluetooth">Bluetoothデバイス</string>
+    <string name="audio_device_wired_headset">有線ヘッドセット</string>
+    <string name="audio_device_fm_tuner">FMチューナー</string>
+    <string name="audio_device_telephony">電話</string>
+    <string name="audio_device_other">その他%1$d</string>
 </resources>
 
 

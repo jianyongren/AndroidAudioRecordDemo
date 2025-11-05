@@ -66,7 +66,7 @@ import me.rjy.oboe.record.demo.ui.WaveformView
 import me.rjy.oboe.record.demo.ui.theme.OboeRecordDemoTheme
 import java.io.File
 
-class MainActivity : ComponentActivity() {
+class AudioRecorderActivity : ComponentActivity() {
 
 //    private external fun native_start_record(path: String)
 //    private external fun native_stop_record()
@@ -80,7 +80,7 @@ class MainActivity : ComponentActivity() {
                 it.isSource
             }
             if (hasSource != null) {
-                viewModel.refreshAudioDevices(this@MainActivity)
+                viewModel.refreshAudioDevices(this@AudioRecorderActivity)
             }
         }
 
@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
                 it.isSource
             }
             if (hasSource != null) {
-                viewModel.refreshAudioDevices(this@MainActivity)
+                viewModel.refreshAudioDevices(this@AudioRecorderActivity)
             }
         }
     }
@@ -201,7 +201,7 @@ class MainActivity : ComponentActivity() {
 
                                 // 观察useOboe的值变化
                                 LaunchedEffect(viewModel.useOboe.value) {
-                                    viewModel.refreshAudioDevices(this@MainActivity)
+                                    viewModel.refreshAudioDevices(this@AudioRecorderActivity)
                                 }
                             }
                             }
@@ -279,7 +279,7 @@ class MainActivity : ComponentActivity() {
                                     OperationButtons(
                                         viewModel = viewModel,
                                         startRecord = { startRecord() },
-                                        context = this@MainActivity
+                                        context = this@AudioRecorderActivity
                                     )
                                 }
                             }
@@ -318,7 +318,7 @@ class MainActivity : ComponentActivity() {
                                                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                                 val clip = ClipData.newPlainText(getString(R.string.main_record_file_path), path)
                                                 clipboard.setPrimaryClip(clip)
-                                                Toast.makeText(this@MainActivity, getString(R.string.main_path_copied), Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(this@AudioRecorderActivity, getString(R.string.main_path_copied), Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(
                                                     imageVector = Icons.Outlined.ContentCopy,

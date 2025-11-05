@@ -63,6 +63,23 @@
     <string name="local_player_request_video_permission">请求视频读取权限</string>
     <string name="local_player_request_storage_permission">请求存储读取权限</string>
     <string name="local_player_request_media_permission">请求媒体读取权限</string>
+    <!-- Audio source names -->
+    <string name="audio_source_default">默认</string>
+    <string name="audio_source_mic">麦克风</string>
+    <string name="audio_source_voice_communication">语音通话</string>
+    <string name="audio_source_voice_recognition">语音识别</string>
+    <string name="audio_source_camcorder">摄像机</string>
+    <string name="audio_source_unprocessed">未处理</string>
+    <string name="audio_source_voice_performance">演出</string>
+    <!-- Audio device names -->
+    <string name="audio_device_default">默认设备</string>
+    <string name="audio_device_builtin_mic">内置麦克风</string>
+    <string name="audio_device_usb">USB设备</string>
+    <string name="audio_device_bluetooth">蓝牙设备</string>
+    <string name="audio_device_wired_headset">有线耳机</string>
+    <string name="audio_device_fm_tuner">FM调频</string>
+    <string name="audio_device_telephony">电话通话</string>
+    <string name="audio_device_other">其他%1$d</string>
 </resources>
 
 

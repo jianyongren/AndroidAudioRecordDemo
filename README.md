@@ -1,93 +1,96 @@
-# Android 音频录制演示项目
+# Android Audio Recording Demo
 
-这是一个使用 Oboe 和 Android 原生音频 API 实现的音频录制与处理演示项目，提供了丰富的音频录制、播放和测试功能。
+[中文](README_zh.md) | English
 
-## 功能特性
+An audio recording and processing demonstration project using Oboe and Android native audio APIs, providing rich audio recording, playback, and testing features.
 
-### 🎙️ 音频录制功能
+## Features
 
-#### 录音方式选择
+### 🎙️ Audio Recording
 
-- **Oboe 录音**：使用 Google Oboe 库进行高质量录音，支持低延迟
-- **AudioRecord 录音**：使用 Android 原生 AudioRecord API
+#### Recording Method Selection
 
-#### 丰富的录音参数配置
+- **Oboe Recording**: High-quality recording with low latency using Google Oboe library
+- **AudioRecord Recording**: Using Android native AudioRecord API
 
-- **声道选择**：单声道 / 立体声
-- **采样率**：8kHz / 16kHz / 44.1kHz / 48kHz
-- **数据格式**：PCM_16BIT / PCM_FLOAT
-- **音频源**：默认、麦克风、语音通话、语音识别、摄像机、未处理、演出等
-- **录音设备**：支持选择内置麦克风、USB 设备、蓝牙设备、有线耳机等
-- **音频 API**（仅 Oboe 模式）：Unspecified / AAudio / OpenSL ES
+#### Rich Recording Parameter Configuration
 
-#### 实时波形显示
+- **Channel Selection**: Mono / Stereo
+- **Sample Rate**: 8kHz / 16kHz / 44.1kHz / 48kHz
+- **Data Format**: PCM_16BIT / PCM_FLOAT
+- **Audio Source**: Default, Microphone, Voice Call, Voice Recognition, Camera, Unprocessed, Performance, etc.
+- **Recording Device**: Support for built-in microphone, USB devices, Bluetooth devices, wired headphones, etc.
+- **Audio API** (Oboe mode only): Unspecified / AAudio / OpenSL ES
 
-- 录音时实时显示音频波形
-- 单声道模式显示单个波形图
-- 立体声模式分别显示左右声道波形
-- 播放时显示播放波形和进度条
+#### Real-time Waveform Display
 
-#### PCM 文件管理
+- Real-time audio waveform display during recording
+- Single waveform display in mono mode
+- Separate left and right channel waveforms in stereo mode
+- Playback waveform and progress bar during playback
 
-- 自动生成带参数信息的文件名（包含录音方式、声道、采样率、格式等）
-- 文件列表管理，支持查看和选择已录制的 PCM 文件
-- 支持删除录音文件（长按进入编辑模式）
-- 显示录音文件路径，支持一键复制路径
+#### PCM File Management
 
-### 🎵 音频播放功能
+- Automatic filename generation with parameter information (recording method, channels, sample rate, format, etc.)
+- File list management with support for viewing and selecting recorded PCM files
+- Support for deleting recording files (long press to enter edit mode)
+- Display recording file path with one-click path copying
 
-#### 播放方式选择
+### 🎵 Audio Playback
 
-- **Oboe 播放**：使用 Oboe 库进行低延迟播放
-- **AudioTrack 播放**：使用 Android 原生 AudioTrack API
+#### Playback Method Selection
 
-#### PCM 文件播放
+- **Oboe Playback**: Low-latency playback using Oboe library
+- **AudioTrack Playback**: Using Android native AudioTrack API
 
-- 自动从文件名解析播放参数（声道、采样率、格式）
-- 支持播放录制的 PCM 文件
-- 播放时显示波形和播放进度
-- 播放完成后自动清理资源
+#### PCM File Playback
 
-### 📊 录音延迟测试
+- Automatic parameter parsing from filename (channels, sample rate, format)
+- Support for playing recorded PCM files
+- Waveform and playback progress display during playback
+- Automatic resource cleanup after playback completion
 
-- 自动检测录音延迟
-- 显示平均延迟时间
-- 显示最高相关性的延迟窗口信息（Top 3）
-- 生成延迟测试录音文件（M4A 格式）
-- 支持播放和分享测试结果文件
-- 自动清理旧的测试文件（保留最新 20 个）
+### 📊 Recording Latency Test
 
-### 🎬 本地播放器
+- Automatic recording latency detection
+- Display average latency time
+- Display latency window information with highest correlation (Top 3)
+- Generate latency test recording files (M4A format)
+- Support for playing and sharing test result files
+- Automatic cleanup of old test files (keep latest 20 files)
 
-- 支持本地音频/视频文件播放功能
+### 🎬 Local Player
 
-### ⚙️ 其他特性
+- Support for local audio/video file playback
 
-- **参数持久化**：自动保存和恢复录音参数设置
-- **设备动态监听**：自动检测音频设备插拔并刷新设备列表
-- **错误处理**：友好的错误提示和处理机制
-- **现代化 UI**：使用 Jetpack Compose 构建，支持横竖屏自适应
-- **文件分享**：支持通过系统分享功能分享录音文件
+### ⚙️ Other Features
 
-## 技术栈
+- **Parameter Persistence**: Automatic saving and restoration of recording parameter settings
+- **Device Dynamic Monitoring**: Automatic detection of audio device plug/unplug and device list refresh
+- **Error Handling**: User-friendly error prompts and handling mechanisms
+- **Modern UI**: Built with Jetpack Compose, supporting landscape and portrait orientation adaptation
+- **File Sharing**: Support for sharing recording files through system share functionality
+- **Multi-language Support**: Supports English, Chinese, and Japanese
 
-- **开发语言**：Kotlin
-- **UI 框架**：Jetpack Compose
-- **音频库**：Oboe、Android AudioRecord/AudioTrack
-- **原生代码**：C++ (JNI)
-- **架构模式**：MVVM (ViewModel + LiveData)
+## Tech Stack
 
-## 权限要求
+- **Language**: Kotlin
+- **UI Framework**: Jetpack Compose
+- **Audio Libraries**: Oboe, Android AudioRecord/AudioTrack
+- **Native Code**: C++ (JNI)
+- **Architecture Pattern**: MVVM (ViewModel + LiveData)
 
-应用需要以下权限：
+## Permissions
 
-- `RECORD_AUDIO`：用于录制音频
-- `READ_MEDIA_AUDIO` / `READ_EXTERNAL_STORAGE`：用于读取媒体文件（Android 13+ / 旧版本）
+The application requires the following permissions:
 
-## 截图
+- `RECORD_AUDIO`: For recording audio
+- `READ_MEDIA_AUDIO` / `READ_EXTERNAL_STORAGE`: For reading media files (Android 13+ / older versions)
+
+## Screenshots
 
 <p align="center">
-  <img src="./docs/app_screen_short.png" alt="程序截图" width="45%" />
+  <img src="./docs/audio_recorder_zh.png" alt="App Screenshot" width="45%" />
   &nbsp;&nbsp;
-  <img src="./docs/录音延迟测试.png" alt="录音延迟测试" width="45%" />
+  <img src="./docs/audio_recorder_latency_test_zh.png" alt="Latency Test" width="45%" />
 </p>

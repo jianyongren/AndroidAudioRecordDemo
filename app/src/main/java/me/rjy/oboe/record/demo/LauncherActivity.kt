@@ -27,7 +27,7 @@ class LauncherActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     LauncherScreen(
                         onGoRecord = {
-                            startActivity(Intent(this, MainActivity::class.java))
+                            startActivity(Intent(this, AudioRecorderActivity::class.java))
                         },
                         onGoLocalPlayer = {
                             startActivity(Intent(this, LocalPlayerActivity::class.java))
