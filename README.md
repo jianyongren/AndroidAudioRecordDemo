@@ -86,5 +86,8 @@
 
 ## 截图
 
-![程序截图](./docs/app_screen_short.png)
-![录音延迟测试](./docs/录音延迟测试.png)
+<p align="center">
+  <img src="./docs/app_screen_short.png" alt="程序截图" width="45%" />
+  &nbsp;&nbsp;
+  <img src="./docs/录音延迟测试.png" alt="录音延迟测试" width="45%" />
+</p>
