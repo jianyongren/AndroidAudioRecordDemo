@@ -15,7 +15,7 @@
  * @brief Oboe音频录制器类
  * 负责音频数据的采集、缓存和回调
  */
-class OboeRecorder : public oboe::AudioStreamDataCallback {
+class OboeRecorder : public oboe::AudioStreamDataCallback, public oboe::AudioStreamErrorCallback {
 public:
     /**
      * @brief 构造函数
@@ -42,6 +42,16 @@ public:
             oboe::AudioStream *audioStream,
             void *audioData,
             int32_t numFrames) override;
+
+    /**
+     * @brief 错误回调函数（在流关闭前调用）
+     */
+    void onErrorBeforeClose(oboe::AudioStream *audioStream, oboe::Result error) override;
+
+    /**
+     * @brief 错误回调函数（在流关闭后调用）
+     */
+    void onErrorAfterClose(oboe::AudioStream *audioStream, oboe::Result error) override;
 
     /**
      * @brief 开始录音
@@ -110,6 +120,11 @@ private:
      * @brief 发送音频数据到Java层
      */
     void sendAudioDataToJava(const void* audioData, int32_t numFrames);
+
+    /**
+     * @brief 发送错误信息到Java层
+     */
+    void sendErrorToJava(const char* errorMessage);
 
     /**
      * @brief 消费者线程函数

@@ -9,6 +9,7 @@
 // 声明外部变量
 extern JavaVM* javaVm;
 extern jmethodID onAudioDataMethodId;
+extern jmethodID onErrorMethodId;
 extern jobject recorderViewModel;
 
 // 定义静态成员变量
@@ -103,6 +104,89 @@ void OboeRecorder::sendAudioDataToJava(const void* audioData, int32_t numFrames)
     cachedEnv_->DeleteLocalRef(localArray);
 }
 
+void OboeRecorder::sendErrorToJava(const char* errorMessage) {
+    if (!onErrorMethodId || !recorderViewModel || !javaVm) {
+        LOGE("Cannot send error to Java: missing JNI references");
+        return;
+    }
+
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    
+    // 尝试获取当前线程的JNI环境
+    // 注意：错误回调在Oboe的音频流线程中调用，不能使用cachedEnv_
+    jint result = javaVm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+    
+    if (result == JNI_EDETACHED) {
+        // 当前线程没有附加到JVM，需要附加
+        JavaVMAttachArgs args;
+        args.version = JNI_VERSION_1_6;
+        args.name = "OboeErrorThread";
+        args.group = nullptr;
+        
+        if (javaVm->AttachCurrentThread(&env, &args) == JNI_OK) {
+            attached = true;
+        } else {
+            LOGE("Failed to attach thread to JVM for error callback");
+            return;
+        }
+    } else if (result != JNI_OK) {
+        LOGE("Failed to get JNI environment: %d", result);
+        return;
+    }
+
+    if (env) {
+        jstring errorMsg = env->NewStringUTF(errorMessage);
+        if (errorMsg) {
+            env->CallVoidMethod(recorderViewModel, onErrorMethodId, errorMsg);
+            // 检查是否有异常
+            if (env->ExceptionCheck()) {
+                LOGE("Exception occurred when calling onError");
+                env->ExceptionDescribe();
+                env->ExceptionClear();
+            }
+            env->DeleteLocalRef(errorMsg);
+        }
+    }
+
+    // 如果附加了线程，需要分离
+    if (attached) {
+        javaVm->DetachCurrentThread();
+    }
+}
+
+void OboeRecorder::onErrorBeforeClose(oboe::AudioStream *audioStream, oboe::Result error) {
+    if (audioStream != stream_.get()) {
+        return;
+    }
+
+    const char* errorText = oboe::convertToText(error);
+    LOGE("Oboe error before close: %s", errorText);
+    
+    // 停止录音
+    isRunning_ = false;
+    dataReady_.notify_one();
+
+    // 发送错误到Java层
+//    sendErrorToJava(errorText);
+}
+
+void OboeRecorder::onErrorAfterClose(oboe::AudioStream *audioStream, oboe::Result error) {
+    if (audioStream != stream_.get()) {
+        return;
+    }
+
+    const char* errorText = oboe::convertToText(error);
+    LOGE("Oboe error after close: %s", errorText);
+    
+    // 确保停止录音
+    isRunning_ = false;
+    dataReady_.notify_one();
+
+    // 发送错误到Java层
+    sendErrorToJava(errorText);
+}
+
 void OboeRecorder::consumerThreadFunc() {
     // 初始化JNI环境
     initJniEnv();
@@ -167,6 +251,7 @@ bool OboeRecorder::start() {
             ->setSampleRate(sampleRate)
             ->setChannelCount(isStereo ? 2 : 1)
             ->setDataCallback(this)
+            ->setErrorCallback(this)
             ->setAudioApi(getAudioApi(audioApi));
 
     if (deviceId != 0) {

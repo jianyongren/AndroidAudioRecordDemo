@@ -107,6 +107,20 @@ class MainActivity : ComponentActivity() {
                 Surface(
                     modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background
                 ) {
+                    // 错误弹窗
+                    viewModel.errorMessage.value?.let { errorMsg ->
+                        AlertDialog(
+                            onDismissRequest = { viewModel.clearError() },
+                            title = { Text("录音错误") },
+                            text = { Text(errorMsg) },
+                            confirmButton = {
+                                TextButton(onClick = { viewModel.clearError() }) {
+                                    Text("确定")
+                                }
+                            }
+                        )
+                    }
+
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(11.dp),
                         contentPadding = PaddingValues(11.dp),

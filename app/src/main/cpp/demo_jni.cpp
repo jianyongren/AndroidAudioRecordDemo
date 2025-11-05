@@ -8,6 +8,7 @@
 // 全局变量
 JavaVM* javaVm = nullptr;
 jmethodID onAudioDataMethodId = nullptr;
+jmethodID onErrorMethodId = nullptr;
 jobject recorderViewModel = nullptr;
 
 static std::unique_ptr<OboeRecorder> gRecorder;
@@ -29,6 +30,12 @@ JNI_OnLoad(JavaVM* vm, void* reserved) {
     // 获取onAudioData方法ID
     onAudioDataMethodId = env->GetMethodID(viewModelClass, "onAudioData", "([BI)V");
     if (onAudioDataMethodId == nullptr) {
+        return JNI_ERR;
+    }
+
+    // 获取onError方法ID
+    onErrorMethodId = env->GetMethodID(viewModelClass, "onError", "(Ljava/lang/String;)V");
+    if (onErrorMethodId == nullptr) {
         return JNI_ERR;
     }
 

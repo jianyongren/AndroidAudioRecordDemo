@@ -151,6 +151,9 @@ class RecorderViewModel : ViewModel() {
     val isEditMode = mutableStateOf(false)
     val selectedFiles = mutableStateOf<Set<File>>(emptySet())
 
+    // 错误状态
+    val errorMessage = mutableStateOf<String?>(null)
+
     private val currentSampleRate get() = sampleRate.intValue
     private val currentChannel get() = if(isStereo.value) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
     private val currentFormat get() = if(isFloat.value) AudioFormat.ENCODING_PCM_FLOAT else AudioFormat.ENCODING_PCM_16BIT
@@ -749,6 +752,23 @@ class RecorderViewModel : ViewModel() {
                 }
             }
         }
+    }
+
+    // 供native层调用的方法，用于处理错误
+    @Keep
+    private fun onError(errorMessage: String) {
+        Log.e(TAG, "Oboe error: $errorMessage")
+        viewModelScope.launch(Dispatchers.Main) {
+            // 设置错误消息
+            this@RecorderViewModel.errorMessage.value = errorMessage
+            // 停止录音
+            stopRecord()
+        }
+    }
+
+    // 清除错误消息
+    fun clearError() {
+        errorMessage.value = null
     }
 
     fun setMaxWaveformPoints(points: Int) {
