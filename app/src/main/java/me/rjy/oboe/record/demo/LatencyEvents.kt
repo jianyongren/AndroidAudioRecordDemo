@@ -10,6 +10,9 @@ object LatencyEvents {
     @Volatile
     var errorListener: ((String, Int) -> Unit)? = null
 
+    @Volatile
+    var configListener: ((String, String) -> Unit)? = null
+
     @JvmStatic
     fun notifyDetecting() {
         detectingListener?.invoke()
@@ -30,6 +33,11 @@ object LatencyEvents {
         delay3: Double, corr3: Double
     ) {
         listener?.invoke(outputPath, resultCode, avgDelayMs, delay1, corr1, delay2, corr2, delay3, corr3)
+    }
+
+    @JvmStatic
+    fun notifyConfig(outputConfig: String, inputConfig: String) {
+        configListener?.invoke(outputConfig, inputConfig)
     }
 }
 

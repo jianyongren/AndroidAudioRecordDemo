@@ -9,12 +9,12 @@
 #include <cmath>
 #include <climits>
 
-#include "oboe/Oboe.h"
+#include <oboe/Oboe.h>
 #include <thread>
 #include <vector>
 #include <mutex>
 
-#include "audio/RingBuffer.h"
+#include "audio/AudioRingBuffer.h"
 #include "ffmpeg/AudioTranscode.h"
 #include "logging.h"
 #include "config.h"
@@ -57,7 +57,10 @@ public:
                 return oboe::DataCallbackResult::Stop;
             }
             
-            const size_t bytesPerFrame = kChannelCount * kBytesPerSample;
+            const int ch = tester_->workingChannelCount_ > 0 ? tester_->workingChannelCount_ : kChannelCount;
+            const bool fmtFloat = tester_->outFormatFloat_;
+            const size_t bytesPerSample = fmtFloat ? sizeof(float) : kBytesPerSample;
+            const size_t bytesPerFrame = static_cast<size_t>(ch) * bytesPerSample;
             const size_t bytesNeeded = static_cast<size_t>(numFrames) * bytesPerFrame;
             size_t currentPos = tester_->pcmPosition_.load();
             
@@ -73,7 +76,7 @@ public:
             size_t bytesAvailable = tester_->pcmBuffer_.size() - currentPos;
             size_t bytesToRead = (bytesNeeded < bytesAvailable) ? bytesNeeded : bytesAvailable;
             
-            // 复制PCM数据到输出缓冲区
+            // 复制PCM数据到输出缓冲区（已严格匹配格式，无需转换）
             memcpy(audioData, tester_->pcmBuffer_.data() + currentPos, bytesToRead);
             
             // 如果数据不足，填充剩余部分为静音
@@ -83,7 +86,7 @@ public:
             
             // 同时写入环形缓冲（只写入实际读取的PCM数据，不包括静音）
             if (tester_->origRb_ && bytesToRead > 0) {
-                tester_->origRb_->write(tester_->pcmBuffer_.data() + currentPos, bytesToRead);
+                tester_->origRb_->writeBytes(tester_->pcmBuffer_.data() + currentPos, bytesToRead);
             }
             
             // 更新播放位置（按实际需要的字节数更新，播放完成后停止）
@@ -150,8 +153,15 @@ public:
         
         oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) override {
             if (!tester_ || !tester_->running_.load()) return oboe::DataCallbackResult::Stop;
-            size_t bytes = static_cast<size_t>(numFrames) * 2 /*ch*/ * 2 /*s16*/;
-            if (tester_->recRb_) tester_->recRb_->write(reinterpret_cast<uint8_t*>(audioData), bytes);
+            const int ch = tester_->workingChannelCount_ > 0 ? tester_->workingChannelCount_ : kChannelCount;
+            // 严格按录音流参数写入原始数据到环形缓冲（不做格式转换）
+            if (audioStream->getFormat() == oboe::AudioFormat::I16) {
+                size_t bytes = static_cast<size_t>(numFrames) * ch * kBytesPerSample;
+                if (tester_->recRb_) tester_->recRb_->writeBytes(reinterpret_cast<uint8_t*>(audioData), bytes);
+            } else {
+                size_t bytes = static_cast<size_t>(numFrames) * ch * sizeof(float);
+                if (tester_->recRb_) tester_->recRb_->writeBytes(reinterpret_cast<const uint8_t*>(audioData), bytes);
+            }
             return oboe::DataCallbackResult::Continue;
         }
         
@@ -219,8 +229,28 @@ public:
             mergeThread_.join();
         }
         
-        // Step 1: 解码原始音频为 48kHz/S16/双声道 PCM
-        decodedPcmPath_ = decode_to_pcm_48k_s16_stereo(inputPath.c_str(), cacheDir.c_str());
+        // 运行前的参数校验与归一化，保持低延迟假设
+        if (workingSampleRate_ <= 0) {
+            LOGW("Invalid sampleRate=%d, fallback to 48000", workingSampleRate_);
+            workingSampleRate_ = 48000;
+        }
+        if (workingChannelCount_ <= 0 || workingChannelCount_ > 2) {
+            LOGW("Unsupported channelCount=%d, normalize to mono", workingChannelCount_);
+            workingChannelCount_ = 1;
+        }
+        
+        // Step 1: 解码原始音频为严格匹配播放配置的交错 PCM（S16 或 Float）
+        // 显式指定输出PCM文件名，避免函数签名不匹配
+        std::string outPcmName = outFormatFloat_ ? std::string("orig_f32le.pcm") : std::string("orig_s16le.pcm");
+        decodedPcmPath_ = decode_to_pcm_interleaved(
+                inputPath.c_str(),
+                cacheDir.c_str(),
+                workingSampleRate_,
+                workingChannelCount_,
+                outPcmName.c_str(),
+                outFormatFloat_);
+        // 标记解码格式（用于播放路径的健壮处理）
+        decodedIsFloat_ = outFormatFloat_;
         if (decodedPcmPath_.empty()) {
             return -1;
         }
@@ -243,11 +273,19 @@ public:
             }
         }
         
-        // 初始化环形缓冲
-        size_t bytesPerSec = static_cast<size_t>(kSampleRate) * kChannelCount * kBytesPerSample;
+        // 初始化环形缓冲（按字节容量分配），并设置输入/输出格式
+        size_t bytesPerSec = static_cast<size_t>(workingSampleRate_) * workingChannelCount_ * (outFormatFloat_ ? sizeof(float) : kBytesPerSample);
         size_t capBytes = bytesPerSec * kRingBufferMs / 1000;
-        origRb_ = new RingBuffer(capBytes);
-        recRb_  = new RingBuffer(capBytes);
+        origRb_ = new AudioRingBuffer(capBytes);
+        recRb_  = new AudioRingBuffer(capBytes);
+        if (origRb_) {
+            origRb_->init({workingSampleRate_, workingChannelCount_, outFormatFloat_},
+                          {48000, 1, true});
+        }
+        if (recRb_) {
+            recRb_->init({workingSampleRate_, workingChannelCount_, inFormatFloat_},
+                         {48000, 1, true});
+        }
         
         // 读取PCM文件到内存（最大50M）
         if (!loadPcmFile()) {
@@ -262,11 +300,11 @@ public:
         // 打开输出流（使用回调方式）
         oboe::AudioStreamBuilder outBuilder;
         outBuilder.setDirection(oboe::Direction::Output)
-                ->setSharingMode(oboe::SharingMode::Exclusive)
-                ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-                ->setSampleRate(kSampleRate)
-                ->setChannelCount(kChannelCount)
-                ->setFormat(oboe::AudioFormat::I16)
+                ->setSharingMode(outExclusive_ ? oboe::SharingMode::Exclusive : oboe::SharingMode::Shared)
+                ->setPerformanceMode(outLowLatency_ ? oboe::PerformanceMode::LowLatency : oboe::PerformanceMode::None)
+                ->setSampleRate(workingSampleRate_)
+                ->setChannelCount(workingChannelCount_)
+                ->setFormat(outFormatFloat_ ? oboe::AudioFormat::Float : oboe::AudioFormat::I16)
                 ->setCallback(playCb_.get());
         oboe::AudioStream* outRaw = nullptr;
         if (outBuilder.openStream(&outRaw) != oboe::Result::OK) {
@@ -285,12 +323,12 @@ public:
                 LOGI("Output buffer optimized: %d -> %d frames (%.2f ms -> %.2f ms)",
                      outInitialBufferSize,
                      outBufResult.value(),
-                     outInitialBufferSize * 1000.0 / kSampleRate,
-                     outBufResult.value() * 1000.0 / kSampleRate);
+                     outInitialBufferSize * 1000.0 / workingSampleRate_,
+                     outBufResult.value() * 1000.0 / workingSampleRate_);
             }
 
         }
-        LOGI("Open Output stream: %s", convertToText(outputStream_.get()));
+        LOGI("Open Output stream: %s", oboe::convertToText(outputStream_.get()));
         
         // 在启动输出流之前设置 running_，因为 requestStart() 可能会立即触发回调
         running_.store(true);
@@ -300,11 +338,11 @@ public:
         // 打开输入流
         oboe::AudioStreamBuilder inBuilder;
         inBuilder.setDirection(oboe::Direction::Input)
-                ->setSharingMode(oboe::SharingMode::Exclusive)
-                ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-                ->setSampleRate(kSampleRate)
-                ->setChannelCount(kChannelCount)
-                ->setFormat(oboe::AudioFormat::I16)
+                ->setSharingMode(inExclusive_ ? oboe::SharingMode::Exclusive : oboe::SharingMode::Shared)
+                ->setPerformanceMode(inLowLatency_ ? oboe::PerformanceMode::LowLatency : oboe::PerformanceMode::None)
+                ->setSampleRate(workingSampleRate_)
+                ->setChannelCount(workingChannelCount_)
+                ->setFormat(inFormatFloat_ ? oboe::AudioFormat::Float : oboe::AudioFormat::I16)
                 ->setCallback(recCb_.get());
         oboe::AudioStream* inRaw = nullptr;
         if (inBuilder.openStream(&inRaw) != oboe::Result::OK) {
@@ -327,8 +365,8 @@ public:
                 LOGI("Input buffer optimized: %d -> %d frames (%.2f ms -> %.2f ms)",
                      inInitialBufferSize,
                      inBufResult.value(),
-                     inInitialBufferSize * 1000.0 / kSampleRate,
-                     inBufResult.value() * 1000.0 / kSampleRate);
+                     inInitialBufferSize * 1000.0 / workingSampleRate_,
+                     inBufResult.value() * 1000.0 / workingSampleRate_);
             } else {
                 // 如果2倍失败，尝试4倍（仍比默认值好）
                 inTargetBufferSize = inFramesPerBurst * 4;
@@ -340,18 +378,20 @@ public:
                 } else {
                     LOGW("Failed to optimize input buffer, using default: %d frames (%.2f ms)",
                          inInitialBufferSize,
-                         inInitialBufferSize * 1000.0 / kSampleRate);
+                         inInitialBufferSize * 1000.0 / workingSampleRate_);
                 }
             }
         }
 
-        LOGI("Open Input stream: %s", convertToText(inputStream_.get()));
-
+        LOGI("Open Input stream: %s", oboe::convertToText(inputStream_.get()));
         
         inputStream_->requestStart();
+
+        // 报告实际的设备配置到Java层
+        notifyJavaConfig(buildStreamConfigString(outputStream_.get()), buildStreamConfigString(inputStream_.get()));
         
         // 启动合成线程
-        mergedPcmPath_ = joinPath(cacheDir, "merged_lr_48k_s16le.pcm");
+        mergedPcmPath_ = joinPath(cacheDir, "merged_lr_s16le.pcm");
         std::string mergedPathLocal = mergedPcmPath_;
         LOGI("mergedPcmPath_=%s", mergedPcmPath_.c_str());
         mergeThread_ = std::thread([this, mergedPathLocal]() {
@@ -389,8 +429,21 @@ public:
     bool isRunning() const {
         return running_.load();
     }
+    
+    // 配置更新接口（供 JNI 调用）
+    void setWorkingSampleRate(int sr) { workingSampleRate_ = sr; }
+    void setWorkingChannelCount(int ch) { workingChannelCount_ = ch; }
+    void setOutExclusive(bool v) { outExclusive_ = v; }
+    void setOutLowLatency(bool v) { outLowLatency_ = v; }
+    void setOutFormatFloat(bool v) { outFormatFloat_ = v; }
+    void setInExclusive(bool v) { inExclusive_ = v; }
+    void setInLowLatency(bool v) { inLowLatency_ = v; }
+    void setInFormatFloat(bool v) { inFormatFloat_ = v; }
 
 private:
+    // 允许回调类访问私有成员
+    friend class PlayCallback;
+    friend class RecCallback;
     static std::string joinPath(const std::string& a, const std::string& b) {
         if (a.empty()) return b;
         if (a.back() == '/') return a + b;
@@ -426,7 +479,10 @@ private:
         }
         
         // 计算预热所需的静音数据量（在有效PCM数据之前填充）
-        size_t preheatSilenceBytes = static_cast<size_t>(kSampleRate) * kChannelCount * kBytesPerSample * kPreheatMs / 1000;
+        const int sr = workingSampleRate_ > 0 ? workingSampleRate_ : kSampleRate;
+        const int ch = workingChannelCount_ > 0 ? workingChannelCount_ : kChannelCount;
+        const size_t bytesPerSample = decodedIsFloat_ ? sizeof(float) : kBytesPerSample;
+        size_t preheatSilenceBytes = static_cast<size_t>(sr) * ch * bytesPerSample * kPreheatMs / 1000;
         size_t totalBufferSize = preheatSilenceBytes + readSize;
         
         // 分配缓冲区：静音数据 + 有效PCM数据
@@ -437,7 +493,7 @@ private:
             memset(pcmBuffer_.data(), 0, preheatSilenceBytes);
             LOGI("Added preheat silence: %zu bytes (%.2f ms)", 
                  preheatSilenceBytes, 
-                 preheatSilenceBytes * 1000.0 / (kSampleRate * kChannelCount * kBytesPerSample));
+                 preheatSilenceBytes * 1000.0 / (sr * ch * bytesPerSample));
         }
         
         // 读取有效PCM数据到静音数据之后
@@ -458,8 +514,9 @@ private:
     }
     
     // 辅助函数：根据配置将多声道音频转换为单声道（兼容单声道和双声道输入）
-    static void channelsToMono(const int16_t* input, size_t inputSamples, int16_t* mono, size_t& outMonoSamples) {
-        if (kChannelCount == 2) {
+    void channelsToMono(const int16_t* input, size_t inputSamples, int16_t* mono, size_t& outMonoSamples) {
+        const int ch = workingChannelCount_ > 0 ? workingChannelCount_ : kChannelCount;
+        if (ch == 2) {
             // 双声道配置：每2个样本（L,R）合并为1个单声道样本（取平均值）
             if (inputSamples % 2 != 0) {
                 // 数据不完整（奇数个样本），丢弃最后一个样本
@@ -472,7 +529,7 @@ private:
                 mono[i] = static_cast<int16_t>((left + right) >> 1);  // 取平均值，防止溢出
             }
             outMonoSamples = monoFrames;
-        } else if (kChannelCount == 1) {
+        } else if (ch == 1) {
             // 单声道配置：已经是单声道，直接复制
             for (size_t i = 0; i < inputSamples; ++i) {
                 mono[i] = input[i];
@@ -480,11 +537,11 @@ private:
             outMonoSamples = inputSamples;
         } else {
             // 其他多声道配置：暂时不支持，直接复制第一个声道
-            LOGE("Unsupported channel count: %d, using first channel only", kChannelCount);
+            LOGE("Unsupported channel count: %d, using first channel only", ch);
             for (size_t i = 0; i < inputSamples; ++i) {
-                mono[i] = input[i * kChannelCount];
+                mono[i] = input[i * ch];
             }
-            outMonoSamples = inputSamples / kChannelCount;
+            outMonoSamples = inputSamples / ch;
         }
     }
     
@@ -498,21 +555,17 @@ private:
         FILE* fp = fopen(mergedPath.c_str(), "wb");
         if (!fp) return;
         
+        // 统一转换参数：48kHz / float / mono
+        const int targetSr = 48000;
         const int chunkMs = 20;
-        // ring buffer中存储的是双声道数据（如果输入是双声道）或单声道数据
-        // 我们按双声道大小读取，然后转换为单声道
-        const size_t monoChunkBytes = static_cast<size_t>(kSampleRate) * chunkMs / 1000 * kBytesPerSample;
-        const size_t stereoChunkBytes = monoChunkBytes * kChannelCount;
-        
-        std::vector<uint8_t> leftStereo(stereoChunkBytes);
-        std::vector<uint8_t> rightStereo(stereoChunkBytes);
-        std::vector<int16_t> leftMono(monoChunkBytes / kBytesPerSample * 2);
-        std::vector<int16_t> rightMono(monoChunkBytes / kBytesPerSample * 2);
-        std::vector<uint8_t> interleaved(monoChunkBytes * 2);
-        
+        const size_t outFramesPerChunk = static_cast<size_t>(targetSr) * chunkMs / 1000;
+        //使用2倍大小的缓存，防止越界
+        std::vector<float> leftMonoF(outFramesPerChunk * 2);
+        std::vector<float> rightMonoF(outFramesPerChunk * 2);
+        std::vector<int16_t> interleavedS16(outFramesPerChunk * 2);
         // 剩余数据缓存：保存上次未处理完的数据
-        size_t leftRemainingBytes = 0;
-        size_t rightRemainingBytes = 0;
+        size_t leftRemainingFrames = 0;
+        size_t rightRemainingFrames = 0; 
         
         bool started = false;
         
@@ -525,94 +578,56 @@ private:
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     continue;
                 }
-                // 预热结束，清空两路 ring 以对齐起点，同时清空剩余数据
-                if (origRb_) {
-                    origRb_->clear();
-                }
-                if (recRb_) {
-                    recRb_->clear();
-                }
-                leftRemainingBytes = 0;
-                rightRemainingBytes = 0;
+                // 预热结束，清空两路 ring 以对齐起点
+                if (origRb_) origRb_->clear();
+                if (recRb_)  recRb_->clear();
                 started = true;
                 LOGI("preheat done, start merging");
             }
-            
+
             // 从ring buffer读取数据到剩余数据后面
-            size_t lNewBytes = 0;
-            size_t rNewBytes = 0;
+            size_t lNewFrames = 0;
+            size_t rNewFrames = 0;
+            
             if (origRb_) {
-                // 读取到剩余数据后面
-                lNewBytes = origRb_->read(leftStereo.data() + leftRemainingBytes, stereoChunkBytes - leftRemainingBytes);
+                lNewFrames = origRb_->readConvert(leftMonoF.data() + leftRemainingFrames, outFramesPerChunk - leftRemainingFrames);
             }
             if (recRb_) {
-                rNewBytes = recRb_->read(rightStereo.data() + rightRemainingBytes, stereoChunkBytes - rightRemainingBytes);
+                rNewFrames = recRb_->readConvert(rightMonoF.data() + rightRemainingFrames, outFramesPerChunk - rightRemainingFrames);
             }
+
+            // 读取并转换到统一格式
+            size_t lFrames = leftRemainingFrames + lNewFrames;
+            size_t rFrames = rightRemainingFrames + rNewFrames;
             
-            // 计算总的有效数据长度
-            size_t lTotalBytes = leftRemainingBytes + lNewBytes;
-            size_t rTotalBytes = rightRemainingBytes + rNewBytes;
-            
-            if (lTotalBytes == 0 || rTotalBytes == 0) {
-                if (lTotalBytes > 0) {
-                    leftRemainingBytes = lTotalBytes;
-                }
-                if (rTotalBytes > 0) {
-                    rightRemainingBytes = rTotalBytes;
-                }
+            size_t frames = std::min(lFrames, rFrames);
+            if (frames <= 0) { // 如果两路中有一路无数据，稍后重试
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 continue;
             }
-            
-            // 使用较小的数据长度进行本次合并
-            size_t processBytes = std::min(lTotalBytes, rTotalBytes);
-            if (kChannelCount == 2 && processBytes % 2 != 0) {
-                processBytes = processBytes - 1;  //双声道时保证数据是偶数
+
+            // 对齐后分别写入左右声道（不混合），再交错为 S16 立体声
+            auto clamp16 = [](float x) {
+                if (x > 1.0f) x = 1.0f; if (x < -1.0f) x = -1.0f;
+                return static_cast<int16_t>(std::lrintf(x * 32767.0f));
+            };
+            for (size_t i = 0; i < frames; ++i) {
+                float l = leftMonoF[i];
+                float r = rightMonoF[i];
+                interleavedS16[2 * i] = clamp16(l);
+                interleavedS16[2 * i + 1] = clamp16(r);
             }
             
-            // 将处理的数据转换为int16样本数组
-            size_t processSamples = processBytes / kBytesPerSample;
-            const int16_t* plInput = reinterpret_cast<const int16_t*>(leftStereo.data());
-            const int16_t* prInput = reinterpret_cast<const int16_t*>(rightStereo.data());
-            
-            // 根据配置将多声道转换为单声道
-            size_t lMonoSamples = 0, rMonoSamples = 0;
-            channelsToMono(plInput, processSamples, leftMono.data(), lMonoSamples);
-            channelsToMono(prInput, processSamples, rightMono.data(), rMonoSamples);
-            
-            // 取较小的样本数，确保左右声道对齐
-            size_t monoFrames = std::min(lMonoSamples, rMonoSamples);
-            if (monoFrames == 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                continue;
-            }
-            
-            // 交错：左声道=原始音频单声道，右声道=录音单声道
-            int16_t* po = reinterpret_cast<int16_t*>(interleaved.data());
-            for (size_t i = 0; i < monoFrames; ++i) {
-                po[2 * i] = leftMono[i];      // 左声道：原始音频
-                po[2 * i + 1] = rightMono[i]; // 右声道：录音
-            }
-            
-            fwrite(interleaved.data(), 1, monoFrames * kChannelCount * kBytesPerSample, fp);
-            
+            fwrite(interleavedS16.data(), sizeof(int16_t), frames * 2, fp);
+
             // 处理剩余数据：将未使用的数据移到缓冲区头部
-            if (lTotalBytes > processBytes) {
-                size_t leftRemain = lTotalBytes - processBytes;
-                // 将剩余数据移到头部
-                memmove(leftStereo.data(), leftStereo.data() + processBytes, leftRemain);
-                leftRemainingBytes = leftRemain;
-            } else {
-                leftRemainingBytes = 0;
+            leftRemainingFrames = lFrames - frames;
+            rightRemainingFrames = rFrames - frames;
+            if (leftRemainingFrames > 0) {
+                std::memmove(leftMonoF.data(), leftMonoF.data() + frames, leftRemainingFrames * sizeof(float));
             }
-            
-            if (rTotalBytes > processBytes) {
-                size_t rightRemain = rTotalBytes - processBytes;
-                // 将剩余数据移到头部
-                memmove(rightStereo.data(), rightStereo.data() + processBytes, rightRemain);
-                rightRemainingBytes = rightRemain;
-            } else {
-                rightRemainingBytes = 0;
+            if (rightRemainingFrames > 0) {
+                std::memmove(rightMonoF.data(), rightMonoF.data() + frames, rightRemainingFrames * sizeof(float));
             }
         }
         
@@ -642,7 +657,8 @@ private:
         // 自动编码合成的 PCM
         int rc = -1;
         if (!mergedPcmPath_.empty() && !outputM4aPath_.empty()) {
-            rc = encode_pcm_s16le_stereo_48k_to_m4a(mergedPcmPath_.c_str(), outputM4aPath_.c_str());
+            // 合成输出为 S16 交错 PCM；如果后续改为 float，修改最后一个参数为 true
+            rc = encode_pcm_to_m4a(mergedPcmPath_.c_str(), outputM4aPath_.c_str(), workingSampleRate_, 2, false);
             LOGI("auto encode result=%d out=%s", rc, outputM4aPath_.c_str());
         } else {
             LOGE("auto encode skipped: path empty");
@@ -666,7 +682,7 @@ private:
         double& outCorrelation) {
         
         // 搜索范围：0到500ms（约24000样本@48kHz）
-        const size_t maxDelaySamples = static_cast<size_t>(kSampleRate * 0.5);  // 500ms
+        const size_t maxDelaySamples = static_cast<size_t>(workingSampleRate_ * 0.5);  // 500ms
         const size_t searchEnd = std::min(maxDelaySamples, totalFrames - windowStart - windowSize);
         
         if (searchEnd < 100 || windowSize < 1000) {
@@ -766,9 +782,9 @@ private:
         if (totalFrames <= startOffset + windowSize) return candidates;
 
         // 参数：短时窗30ms，扫描步长10ms，命中后跳过700ms
-        const size_t energyWindow = static_cast<size_t>(kSampleRate * 0.03);   // 30ms
-        const size_t energyStep   = static_cast<size_t>(kSampleRate * 0.01);   // 10ms
-        const size_t skipGap      = static_cast<size_t>(kSampleRate * 0.70);   // 命中后跳过700ms
+        const size_t energyWindow = static_cast<size_t>(workingSampleRate_ * 0.03);   // 30ms
+        const size_t energyStep   = static_cast<size_t>(workingSampleRate_ * 0.01);   // 10ms
+        const size_t skipGap      = static_cast<size_t>(workingSampleRate_ * 0.70);   // 命中后跳过700ms
 
         if (energyWindow == 0 || energyStep == 0) return candidates;
 
@@ -808,8 +824,8 @@ private:
     // 返回延迟值（毫秒），精确到0.1ms
     double detectDelay(const std::vector<int16_t>& left, const std::vector<int16_t>& right, size_t totalFrames) {
         // 参数配置
-        const size_t windowSize = static_cast<size_t>(kSampleRate * 0.7);  // 700ms秒窗口
-        const size_t startOffset = static_cast<size_t>(kSampleRate * 0.1); // 从0.1秒开始，避开预热期
+        const size_t windowSize = static_cast<size_t>(workingSampleRate_ * 0.7);  // 700ms秒窗口
+        const size_t startOffset = static_cast<size_t>(workingSampleRate_ * 0.1); // 从0.1秒开始，避开预热期
 
         // 初始化前3个窗口信息
         for (int i = 0; i < 3; ++i) {
@@ -851,8 +867,8 @@ private:
             if (detectDelayInWindow(left, right, windowStart, windowSize, totalFrames, delaySamples, correlation)) {
                 allResults.push_back({delaySamples, correlation});
                 LOGI("detectDelay: Candidate %zu (start=%.2fs): delay=%zu samples (%.2f ms), correlation=%.4f",
-                     windowCount, windowStart * 1000.0 / kSampleRate,
-                     delaySamples, delaySamples * 1000.0 / kSampleRate, correlation);
+                     windowCount, windowStart * 1000.0 / workingSampleRate_,
+                     delaySamples, delaySamples * 1000.0 / workingSampleRate_, correlation);
                 if (correlation > earlyStopThreshold) {
                     highCorrelationCount++;
                     if (highCorrelationCount >= earlyStopCount) {
@@ -867,7 +883,7 @@ private:
         // 如果未获取足够的结果，回退到原先的均匀滑窗策略
         if (allResults.size() < 3) {
             LOGW("detectDelay: Not enough results, using uniform sliding window strategy");
-            const size_t windowStep = static_cast<size_t>(kSampleRate * 0.5);   // 50%重叠，0.5秒步进
+            const size_t windowStep = static_cast<size_t>(workingSampleRate_ * 0.5);   // 50%重叠，0.5秒步进
             for (size_t windowStart = startOffset; windowStart + windowSize <= totalFrames; windowStart += windowStep) {
                 size_t delaySamples = 0; double correlation = 0.0;
                 if (detectDelayInWindow(left, right, windowStart, windowSize, totalFrames, delaySamples, correlation)) {
@@ -894,7 +910,7 @@ private:
         
         // 存储前3个窗口的详细信息（用于UI显示）
         for (size_t i = 0; i < 3 && i < selectedResults.size(); ++i) {
-            top3Delays_[i] = selectedResults[i].delaySamples * 1000.0 / kSampleRate;  // 转换为毫秒
+            top3Delays_[i] = selectedResults[i].delaySamples * 1000.0 / workingSampleRate_;  // 转换为毫秒
             top3Correlations_[i] = selectedResults[i].correlation;
             LOGI("detectDelay: Top window #%zu: delay=%.2f ms, correlation=%.4f",
                  i + 1, top3Delays_[i], top3Correlations_[i]);
@@ -918,7 +934,7 @@ private:
         }
         
         size_t averageDelaySamples = static_cast<size_t>(weightedDelaySum / totalWeight + 0.5);
-        double delayMs = averageDelaySamples * 1000.0 / kSampleRate;
+        double delayMs = averageDelaySamples * 1000.0 / workingSampleRate_;
         
         // 计算标准差，验证一致性
         double variance = 0.0;
@@ -928,7 +944,7 @@ private:
             variance += weight * diff * diff;
         }
         double stdDevSamples = std::sqrt(variance / totalWeight);
-        double stdDevMs = stdDevSamples * 1000.0 / kSampleRate;
+        double stdDevMs = stdDevSamples * 1000.0 / workingSampleRate_;
         
         // 计算平均相关度
         double avgCorrelation = 0.0;
@@ -952,10 +968,9 @@ private:
         std::vector<int16_t> leftChannel(totalFrames);
         std::vector<int16_t> rightChannel(totalFrames);
         for (size_t i = 0; i < totalFrames; ++i) {
-            leftChannel[i] = interleaved[i * kChannelCount];
-            rightChannel[i] = interleaved[i * kChannelCount + 1];
+            leftChannel[i] = interleaved[i * 2];
+            rightChannel[i] = interleaved[i * 2 + 1];
         }
-        
         return detectDelay(leftChannel, rightChannel, totalFrames);
     }
     
@@ -1169,6 +1184,50 @@ private:
         }
         if (needDetach) vm_->DetachCurrentThread();
     }
+
+    std::string buildStreamConfigString(oboe::AudioStream* stream) {
+        if (!stream) return std::string("<null>");
+        std::string s;
+        s += "SR=" + std::to_string(stream->getSampleRate());
+        s += " CH=" + std::to_string(stream->getChannelCount());
+        s += " FMT=" + std::string(stream->getFormat() == oboe::AudioFormat::I16 ? "I16" : (stream->getFormat() == oboe::AudioFormat::Float ? "Float" : "Other"));
+        s += " MODE=" + std::string(stream->getSharingMode() == oboe::SharingMode::Exclusive ? "Exclusive" : "Shared");
+        s += " PERF=" + std::string(stream->getPerformanceMode() == oboe::PerformanceMode::LowLatency ? "LowLatency" : "None");
+        // 附加设备突发帧数和当前缓冲区大小（帧）
+        int32_t fpb = stream->getFramesPerBurst();
+        int32_t buf = stream->getBufferSizeInFrames();
+        s += " FPB=" + std::to_string(fpb);
+        s += " BUF=" + std::to_string(buf);
+        return s;
+    }
+
+    void notifyJavaConfig(const std::string& outputConfig, const std::string& inputConfig) {
+        if (!vm_) return;
+        JNIEnv* envCb = nullptr;
+        bool needDetach = false;
+        if (vm_->GetEnv(reinterpret_cast<void**>(&envCb), JNI_VERSION_1_6) != JNI_OK) {
+            if (vm_->AttachCurrentThread(&envCb, nullptr) == JNI_OK) needDetach = true;
+        }
+        if (envCb) {
+            jclass cls = latencyEventsClass_ ? latencyEventsClass_ : envCb->FindClass(LATENCY_EVENTS_CLASS);
+            if (cls) {
+                jmethodID mid = envCb->GetStaticMethodID(cls, "notifyConfig", "(Ljava/lang/String;Ljava/lang/String;)V");
+                if (mid) {
+                    jstring jOut = envCb->NewStringUTF(outputConfig.c_str());
+                    jstring jIn  = envCb->NewStringUTF(inputConfig.c_str());
+                    envCb->CallStaticVoidMethod(cls, mid, jOut, jIn);
+                    envCb->DeleteLocalRef(jOut);
+                    envCb->DeleteLocalRef(jIn);
+                } else {
+                    LOGE("notifyConfig not found");
+                }
+                if (!latencyEventsClass_) envCb->DeleteLocalRef(cls);
+            } else {
+                LOGE("LatencyEvents class not found");
+            }
+        }
+        if (needDetach) vm_->DetachCurrentThread();
+    }
     
     void cleanup() {
         // 清理音频流
@@ -1228,8 +1287,8 @@ private:
     std::unique_ptr<oboe::AudioStream> inputStream_;
     std::unique_ptr<oboe::AudioStream> outputStream_;
     std::chrono::steady_clock::time_point startTime_;
-    RingBuffer* origRb_ = nullptr;   // 原始PCM
-    RingBuffer* recRb_  = nullptr;   // 录音PCM
+    AudioRingBuffer* origRb_ = nullptr;   // 原始PCM（输入格式存储，输出为统一格式）
+    AudioRingBuffer* recRb_  = nullptr;   // 录音PCM（输入格式存储，输出为统一格式）
     std::string mergedPcmPath_;      // 合成PCM输出
     std::string decodedPcmPath_;     // 解码后的原始PCM
     std::string outputM4aPath_;     // 目标输出m4a
@@ -1239,7 +1298,16 @@ private:
     std::atomic<size_t> pcmPosition_{0};  // 当前播放位置（字节偏移）
     std::unique_ptr<PlayCallback> playCb_; // 播放回调
     std::unique_ptr<RecCallback> recCb_;   // 录音回调
-};
+    int workingSampleRate_{kSampleRate};
+    int workingChannelCount_{kChannelCount};
+    bool outExclusive_{true};
+    bool outLowLatency_{true};
+    bool outFormatFloat_{false};
+    bool inExclusive_{true};
+    bool inLowLatency_{true};
+    bool inFormatFloat_{false};
+    bool decodedIsFloat_{false};
+    };
 
 // 全局对象指针：Java层通过JNI持有
 static LatencyTester* gLatencyTester = nullptr;
@@ -1283,7 +1351,17 @@ Java_me_rjy_oboe_record_demo_LatencyTesterActivity_startLatencyTest(
         jlong nativeHandle,
         jstring jInputPath,
         jstring jCacheDir,
-        jstring jOutputM4a) {
+        jstring jOutputM4a,
+        jboolean outExclusive,
+        jboolean outLowLatency,
+        jint outSampleRate,
+        jint outChannels,
+        jboolean outFormatFloat,
+        jboolean inExclusive,
+        jboolean inLowLatency,
+        jint inSampleRate,
+        jint inChannels,
+        jboolean inFormatFloat) {
     LatencyTester* tester = reinterpret_cast<LatencyTester*>(nativeHandle);
     if (tester == nullptr) {
         LOGE("LatencyTester instance is null");
@@ -1299,6 +1377,19 @@ Java_me_rjy_oboe_record_demo_LatencyTesterActivity_startLatencyTest(
     const char* cacheDir = env->GetStringUTFChars(jCacheDir, nullptr);
     const char* outPath = env->GetStringUTFChars(jOutputM4a, nullptr);
     
+    // 应用配置（为了合并和检测的一致性，使用统一的工作采样率/声道）
+    tester->setWorkingSampleRate(static_cast<int>(outSampleRate));
+    tester->setWorkingChannelCount(static_cast<int>(outChannels));
+    tester->setOutExclusive(outExclusive == JNI_TRUE);
+    tester->setOutLowLatency(outLowLatency == JNI_TRUE);
+    tester->setOutFormatFloat(outFormatFloat == JNI_TRUE);
+    tester->setInExclusive(inExclusive == JNI_TRUE);
+    tester->setInLowLatency(inLowLatency == JNI_TRUE);
+    tester->setInFormatFloat(inFormatFloat == JNI_TRUE);
+
+    // 忽略输入端采样率/声道参数，强制与工作参数保持一致，避免合并时采样率/通道不一致
+    (void)inSampleRate; (void)inChannels;
+
     int result = tester->start(env, std::string(inPath), std::string(cacheDir), std::string(outPath));
     
     env->ReleaseStringUTFChars(jInputPath, inPath);

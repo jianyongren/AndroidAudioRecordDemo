@@ -21,8 +21,17 @@ static std::string joinPath(const std::string& a, const std::string& b) {
     return a + "/" + b;
 }
 
-std::string decode_to_pcm_48k_s16_stereo(const char* inputPath, const char* cacheDir) {
-    LOGI("decode_to_pcm_48k_s16_stereo in=%s cache=%s", inputPath ? inputPath : "(null)", cacheDir ? cacheDir : "(null)");
+// Flexible decode: decode input audio to interleaved PCM (S16 or float)
+// with specified sample rate and channel count. Allows custom output filename.
+std::string decode_to_pcm_interleaved(const char* inputPath,
+                                          const char* cacheDir,
+                                          int outSampleRate,
+                                          int outChannels,
+                                          const char* outFileName,
+                                          bool outputIsFloat) {
+    LOGI("decode_to_pcm_interleaved in=%s cache=%s sr=%d ch=%d file=%s fmt=%s",
+         inputPath ? inputPath : "(null)", cacheDir ? cacheDir : "(null)",
+         outSampleRate, outChannels, outFileName ? outFileName : "(null)", outputIsFloat ? "f32" : "s16");
     AVFormatContext* fmt = nullptr;
     if (avformat_open_input(&fmt, inputPath, nullptr, nullptr) < 0) { LOGE("avformat_open_input failed"); return {}; }
     if (avformat_find_stream_info(fmt, nullptr) < 0) { avformat_close_input(&fmt); return {}; }
@@ -38,11 +47,9 @@ std::string decode_to_pcm_48k_s16_stereo(const char* inputPath, const char* cach
     if (avcodec_parameters_to_context(ctx, st->codecpar) < 0) { avcodec_free_context(&ctx); avformat_close_input(&fmt); return {}; }
     if (avcodec_open2(ctx, codec, nullptr) < 0) { LOGE("avcodec_open2 failed"); avcodec_free_context(&ctx); avformat_close_input(&fmt); return {}; }
 
-    // FFmpeg 7.2 channel layout API
     SwrContext* swr = nullptr;
     AVChannelLayout in_ch_layout{};
     AVChannelLayout out_ch_layout{};
-    // input layout
     if (st->codecpar->ch_layout.nb_channels > 0) {
         av_channel_layout_copy(&in_ch_layout, &st->codecpar->ch_layout);
     } else if (ctx->ch_layout.nb_channels > 0) {
@@ -50,11 +57,10 @@ std::string decode_to_pcm_48k_s16_stereo(const char* inputPath, const char* cach
     } else {
         av_channel_layout_default(&in_ch_layout, ctx->ch_layout.nb_channels > 0 ? ctx->ch_layout.nb_channels : 2);
     }
-    // output layout
-    av_channel_layout_default(&out_ch_layout, kChannelCount);
+    av_channel_layout_default(&out_ch_layout, outChannels > 0 ? outChannels : 2);
 
-    int out_sample_rate = kSampleRate;
-    AVSampleFormat out_fmt = AV_SAMPLE_FMT_S16;
+    int out_sample_rate = outSampleRate > 0 ? outSampleRate : kSampleRate;
+    AVSampleFormat out_fmt = outputIsFloat ? AV_SAMPLE_FMT_FLT : AV_SAMPLE_FMT_S16;
     if (swr_alloc_set_opts2(&swr,
                             &out_ch_layout, out_fmt, out_sample_rate,
                             &in_ch_layout,  ctx->sample_fmt, ctx->sample_rate,
@@ -80,7 +86,13 @@ std::string decode_to_pcm_48k_s16_stereo(const char* inputPath, const char* cach
     AVFrame* frame = av_frame_alloc();
     if (!pkt || !frame) { LOGE("alloc pkt/frame failed"); if(pkt) av_packet_free(&pkt); if(frame) av_frame_free(&frame); swr_free(&swr); avcodec_free_context(&ctx); avformat_close_input(&fmt); return {}; }
 
-    std::string outPath = joinPath(cacheDir, "orig_48k_s16le.pcm");
+    std::string ofn;
+    if (outFileName && *outFileName) {
+        ofn = std::string(outFileName);
+    } else {
+        ofn = outputIsFloat ? std::string("orig_f32le.pcm") : std::string("orig_s16le.pcm");
+    }
+    std::string outPath = joinPath(cacheDir, ofn);
     FILE* fp = fopen(outPath.c_str(), "wb");
     if (!fp) { LOGE("fopen pcm failed: %s", outPath.c_str()); av_packet_free(&pkt); av_frame_free(&frame); swr_free(&swr); avcodec_free_context(&ctx); avformat_close_input(&fmt); return {}; }
 
@@ -91,8 +103,8 @@ std::string decode_to_pcm_48k_s16_stereo(const char* inputPath, const char* cach
             while ((ret = avcodec_receive_frame(ctx, frame)) == 0) {
                 int out_nb_samples = av_rescale_rnd(swr_get_delay(swr, ctx->sample_rate) + frame->nb_samples, out_sample_rate, ctx->sample_rate, AV_ROUND_UP);
                 uint8_t* out_buf = nullptr;
-    int out_linesize = 0;
-    int out_channels = out_ch_layout.nb_channels;
+                int out_linesize = 0;
+                int out_channels = out_ch_layout.nb_channels;
                 av_samples_alloc(&out_buf, &out_linesize, out_channels, out_nb_samples, out_fmt, 0);
                 int conv = swr_convert(swr, &out_buf, out_nb_samples, (const uint8_t**)frame->extended_data, frame->nb_samples);
                 if (conv > 0) {
@@ -123,8 +135,16 @@ static inline const char* ff_err2str(int errnum, char* buf, size_t sz) {
     return av_make_error_string(buf, sz, errnum);
 }
 
-int encode_pcm_s16le_stereo_48k_to_m4a(const char* pcmPath, const char* outM4a) {
-    LOGI("encode to m4a start: in=%s out=%s", pcmPath ? pcmPath : "(null)", outM4a ? outM4a : "(null)");
+// Flexible encode: encode S16 interleaved PCM to AAC/M4A with specified
+// input sample rate and channels.
+int encode_pcm_to_m4a(const char* pcmPath,
+                      const char* outM4a,
+                      int inSampleRate,
+                      int inChannels,
+                      bool inputIsFloat) {
+    LOGI("encode to m4a (flex) start: in=%s out=%s sr=%d ch=%d fmt=%s",
+         pcmPath ? pcmPath : "(null)", outM4a ? outM4a : "(null)", inSampleRate, inChannels,
+         inputIsFloat ? "float" : "s16");
     const AVCodec* codec = avcodec_find_encoder_by_name("aac");
     if (!codec) { LOGE("aac encoder not found"); return -1; }
     AVFormatContext* fmt = nullptr;
@@ -133,9 +153,8 @@ int encode_pcm_s16le_stereo_48k_to_m4a(const char* pcmPath, const char* outM4a) 
     if (!st) { LOGE("new stream failed"); avformat_free_context(fmt); return -3; }
     AVCodecContext* c = avcodec_alloc_context3(codec);
     if (!c) { LOGE("alloc codec ctx failed"); avformat_free_context(fmt); return -4; }
-    // FFmpeg 7.2: use AVChannelLayout
-    av_channel_layout_default(&c->ch_layout, kChannelCount);
-    c->sample_rate = kSampleRate;
+    av_channel_layout_default(&c->ch_layout, inChannels > 0 ? inChannels : kChannelCount);
+    c->sample_rate = inSampleRate > 0 ? inSampleRate : kSampleRate;
     c->sample_fmt = codec->sample_fmts ? codec->sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
     c->bit_rate = 128000;
     c->time_base = {1, c->sample_rate};
@@ -149,12 +168,12 @@ int encode_pcm_s16le_stereo_48k_to_m4a(const char* pcmPath, const char* outM4a) 
     }
     if (avformat_write_header(fmt, nullptr) < 0) { LOGE("write_header failed"); if(fmt->pb) avio_close(fmt->pb); avcodec_free_context(&c); avformat_free_context(fmt); return -8; }
 
-    // Resampler with new channel layout API
     SwrContext* swr = nullptr;
-    AVChannelLayout in_ch_layout{};  // input is S16 interleaved stereo/mono
-    av_channel_layout_default(&in_ch_layout, kChannelCount);
+    AVChannelLayout in_ch_layout{};  // input is interleaved (S16 or float)
+    av_channel_layout_default(&in_ch_layout, inChannels > 0 ? inChannels : kChannelCount);
+    enum AVSampleFormat in_sample_fmt = inputIsFloat ? AV_SAMPLE_FMT_FLT : AV_SAMPLE_FMT_S16;
     if (swr_alloc_set_opts2(&swr, &c->ch_layout, c->sample_fmt, c->sample_rate,
-                            &in_ch_layout, AV_SAMPLE_FMT_S16, kSampleRate, 0, nullptr) < 0 || !swr) {
+                            &in_ch_layout, in_sample_fmt, inSampleRate > 0 ? inSampleRate : kSampleRate, 0, nullptr) < 0 || !swr) {
         LOGE("swr alloc2 failed");
         av_channel_layout_uninit(&in_ch_layout);
         av_write_trailer(fmt); if(fmt->pb) avio_close(fmt->pb); avcodec_free_context(&c); avformat_free_context(fmt); return -9;
@@ -165,7 +184,8 @@ int encode_pcm_s16le_stereo_48k_to_m4a(const char* pcmPath, const char* outM4a) 
     if (!fp) { LOGE("open input pcm failed: %s", pcmPath ? pcmPath : "(null)"); swr_free(&swr); av_write_trailer(fmt); if(fmt->pb) avio_close(fmt->pb); avcodec_free_context(&c); avformat_free_context(fmt); return -10; }
 
     const int frame_size = c->frame_size > 0 ? c->frame_size : 1024;
-    const int bytes_per_frame = frame_size * kChannelCount * kBytesPerSample;
+    const int bytes_per_sample = inputIsFloat ? static_cast<int>(sizeof(float)) : kBytesPerSample;
+    const int bytes_per_frame = frame_size * (inChannels > 0 ? inChannels : kChannelCount) * bytes_per_sample;
     std::vector<uint8_t> inBuf(bytes_per_frame);
     AVFrame* frame = av_frame_alloc();
     AVPacket* pkt = av_packet_alloc();
@@ -177,9 +197,9 @@ int encode_pcm_s16le_stereo_48k_to_m4a(const char* pcmPath, const char* outM4a) 
             std::memset(inBuf.data()+n, 0, inBuf.size()-n);
         }
         AVFrame* inFrame = av_frame_alloc();
-        av_channel_layout_default(&inFrame->ch_layout, kChannelCount);
-        inFrame->sample_rate = kSampleRate;
-        inFrame->format = AV_SAMPLE_FMT_S16;
+        av_channel_layout_default(&inFrame->ch_layout, inChannels > 0 ? inChannels : kChannelCount);
+        inFrame->sample_rate = inSampleRate > 0 ? inSampleRate : kSampleRate;
+        inFrame->format = inputIsFloat ? AV_SAMPLE_FMT_FLT : AV_SAMPLE_FMT_S16;
         inFrame->nb_samples = frame_size;
         av_frame_get_buffer(inFrame, 0);
         std::memcpy(inFrame->data[0], inBuf.data(), inBuf.size());

@@ -1,3 +1,4 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package me.rjy.oboe.record.demo
 
 import android.Manifest
@@ -19,12 +20,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -63,7 +71,22 @@ class LatencyTesterActivity : ComponentActivity() {
 
     private external fun createLatencyTester(): Long
     private external fun destroyLatencyTester(nativeHandle: Long)
-    private external fun startLatencyTest(nativeHandle: Long, originalPath: String, cacheDirPath: String, outputM4aPath: String): Int
+    private external fun startLatencyTest(
+        nativeHandle: Long,
+        originalPath: String,
+        cacheDirPath: String,
+        outputM4aPath: String,
+        outExclusive: Boolean,
+        outLowLatency: Boolean,
+        outSampleRate: Int,
+        outChannels: Int,
+        outFormatFloat: Boolean,
+        inExclusive: Boolean,
+        inLowLatency: Boolean,
+        inSampleRate: Int,
+        inChannels: Int,
+        inFormatFloat: Boolean
+    ): Int
     private external fun stopLatencyTest(nativeHandle: Long): Int
 
     private var nativeLatencyTesterHandle: Long = 0
@@ -86,6 +109,24 @@ class LatencyTesterActivity : ComponentActivity() {
                 val errorMessage = remember { mutableStateOf<String?>(null) }
                 val outputFilePath = remember { mutableStateOf<String?>(null) }
                 val showActionDialog = remember { mutableStateOf<String?>(null) }
+                val showConfigDialog = remember { mutableStateOf(false) }
+
+                // 用户可配置参数（输出/输入）
+                val outExclusive = remember { mutableStateOf(true) }
+                val outLowLatency = remember { mutableStateOf(true) }
+                val outSampleRate = remember { mutableStateOf(48000) }
+                val outChannels = remember { mutableStateOf(2) }
+                val outFormatFloat = remember { mutableStateOf(false) }
+
+                val inExclusive = remember { mutableStateOf(true) }
+                val inLowLatency = remember { mutableStateOf(true) }
+                val inSampleRate = remember { mutableStateOf(48000) }
+                val inChannels = remember { mutableStateOf(2) }
+                val inFormatFloat = remember { mutableStateOf(false) }
+
+                // 实际生效配置展示
+                val actualOutConfig = remember { mutableStateOf<String?>(null) }
+                val actualInConfig = remember { mutableStateOf<String?>(null) }
 
                 val requestPermissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestPermission(),
@@ -111,7 +152,19 @@ class LatencyTesterActivity : ComponentActivity() {
                     }
                 }
 
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        TopAppBar(
+                            title = { },
+                            actions = {
+                                IconButton(onClick = { showConfigDialog.value = true }) {
+                                    Icon(imageVector = Icons.Default.Settings, contentDescription = "配置")
+                                }
+                            }
+                        )
+                    }
+                ) { innerPadding ->
                     // 注册回调
                     LaunchedEffect(Unit) {
                         LatencyEvents.detectingListener = {
@@ -119,6 +172,12 @@ class LatencyTesterActivity : ComponentActivity() {
                                 isDetecting.value = true
                                 isBusy.value = true
                                 errorMessage.value = null
+                            }
+                        }
+                        LatencyEvents.configListener = { outCfg, inCfg ->
+                            runOnUiThread {
+                                actualOutConfig.value = outCfg
+                                actualInConfig.value = inCfg
                             }
                         }
                         LatencyEvents.listener = { path, _, avgDelay, d1, c1, d2, c2, d3, c3 ->
@@ -157,6 +216,18 @@ class LatencyTesterActivity : ComponentActivity() {
                         isDetecting = isDetecting,
                         errorMessage = errorMessage,
                         outputFilePath = outputFilePath,
+                        outExclusive = outExclusive,
+                        outLowLatency = outLowLatency,
+                        outSampleRate = outSampleRate,
+                        outChannels = outChannels,
+                        outFormatFloat = outFormatFloat,
+                        inExclusive = inExclusive,
+                        inLowLatency = inLowLatency,
+                        inSampleRate = inSampleRate,
+                        inChannels = inChannels,
+                        inFormatFloat = inFormatFloat,
+                        actualOutConfig = actualOutConfig,
+                        actualInConfig = actualInConfig,
                         onStart = {
                             detectedDelay.value = null
                             top3Windows.value = null
@@ -165,7 +236,22 @@ class LatencyTesterActivity : ComponentActivity() {
                             outputFilePath.value = null
                             builtinAudioPath.value?.let { audioPath ->
                                 val outPath = deriveOutputPath()
-                                val code = startLatencyTest(nativeLatencyTesterHandle, audioPath, cacheDir.absolutePath, outPath)
+                                val code = startLatencyTest(
+                                    nativeLatencyTesterHandle,
+                                    audioPath,
+                                    cacheDir.absolutePath,
+                                    outPath,
+                                    outExclusive.value,
+                                    outLowLatency.value,
+                                    outSampleRate.value,
+                                    outChannels.value,
+                                    outFormatFloat.value,
+                                    inExclusive.value,
+                                    inLowLatency.value,
+                                    inSampleRate.value,
+                                    inChannels.value,
+                                    inFormatFloat.value
+                                )
                                 if (code == 0) isRunning.value = true
                             }
                         },
@@ -193,6 +279,35 @@ class LatencyTesterActivity : ComponentActivity() {
                             onShare = {
                                 showActionDialog.value = null
                                 shareFile(path)
+                            }
+                        )
+                    }
+
+                    if (showConfigDialog.value) {
+                        ConfigDialog(
+                            initialOutExclusive = outExclusive.value,
+                            initialOutLowLatency = outLowLatency.value,
+                            initialOutSampleRate = outSampleRate.value,
+                            initialOutChannels = outChannels.value,
+                            initialOutFormatFloat = outFormatFloat.value,
+                            initialInExclusive = inExclusive.value,
+                            initialInLowLatency = inLowLatency.value,
+                            initialInSampleRate = inSampleRate.value,
+                            initialInChannels = inChannels.value,
+                            initialInFormatFloat = inFormatFloat.value,
+                            onDismiss = { showConfigDialog.value = false },
+                            onSave = { oEx, oLL, oSR, oCH, oFF, iEx, iLL, iSR, iCH, iFF ->
+                                outExclusive.value = oEx
+                                outLowLatency.value = oLL
+                                outSampleRate.value = oSR
+                                outChannels.value = oCH
+                                outFormatFloat.value = oFF
+                                inExclusive.value = iEx
+                                inLowLatency.value = iLL
+                                inSampleRate.value = iSR
+                                inChannels.value = iCH
+                                inFormatFloat.value = iFF
+                                showConfigDialog.value = false
                             }
                         )
                     }
@@ -266,6 +381,18 @@ private fun LatencyTesterUI(
     isDetecting: MutableState<Boolean>,
     errorMessage: MutableState<String?>,
     outputFilePath: MutableState<String?>,
+    outExclusive: MutableState<Boolean>,
+    outLowLatency: MutableState<Boolean>,
+    outSampleRate: MutableState<Int>,
+    outChannels: MutableState<Int>,
+    outFormatFloat: MutableState<Boolean>,
+    inExclusive: MutableState<Boolean>,
+    inLowLatency: MutableState<Boolean>,
+    inSampleRate: MutableState<Int>,
+    inChannels: MutableState<Int>,
+    inFormatFloat: MutableState<Boolean>,
+    actualOutConfig: MutableState<String?>,
+    actualInConfig: MutableState<String?>,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onFileClick: (String) -> Unit,
@@ -287,6 +414,27 @@ private fun LatencyTesterUI(
             modifier = Modifier.padding(bottom = 16.dp),
             style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
         )
+
+        // 设备实际使用的参数展示
+        actualOutConfig.value?.let { cfg ->
+            Text(
+                text = "实际输出流参数: $cfg",
+                modifier = Modifier.padding(bottom = 8.dp),
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+            )
+        }
+        actualInConfig.value?.let { cfg ->
+            Text(
+                text = "实际输入流参数: $cfg",
+                modifier = Modifier.padding(bottom = 16.dp),
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+            )
+        }
+
+        // 配置项已迁移到弹窗，通过右上角配置按钮打开
+        // 这里不再展示直接可编辑的输入/输出配置区
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         errorMessage.value?.let { error ->
             Text(
@@ -398,6 +546,167 @@ private fun ActionSelectionDialog(
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+@Composable
+private fun ConfigDialog(
+    initialOutExclusive: Boolean,
+    initialOutLowLatency: Boolean,
+    initialOutSampleRate: Int,
+    initialOutChannels: Int,
+    initialOutFormatFloat: Boolean,
+    initialInExclusive: Boolean,
+    initialInLowLatency: Boolean,
+    initialInSampleRate: Int,
+    initialInChannels: Int,
+    initialInFormatFloat: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (
+        outExclusive: Boolean,
+        outLowLatency: Boolean,
+        outSampleRate: Int,
+        outChannels: Int,
+        outFormatFloat: Boolean,
+        inExclusive: Boolean,
+        inLowLatency: Boolean,
+        inSampleRate: Int,
+        inChannels: Int,
+        inFormatFloat: Boolean
+    ) -> Unit,
+) {
+    // 使用弹窗内部的临时状态，保存才生效
+    val outExclusive = remember { mutableStateOf(initialOutExclusive) }
+    val outLowLatency = remember { mutableStateOf(initialOutLowLatency) }
+    val outSampleRate = remember { mutableStateOf(initialOutSampleRate) }
+    val outChannels = remember { mutableStateOf(initialOutChannels) }
+    val outFormatFloat = remember { mutableStateOf(initialOutFormatFloat) }
+
+    val inExclusive = remember { mutableStateOf(initialInExclusive) }
+    val inLowLatency = remember { mutableStateOf(initialInLowLatency) }
+    val inSampleRate = remember { mutableStateOf(initialInSampleRate) }
+    val inChannels = remember { mutableStateOf(initialInChannels) }
+    val inFormatFloat = remember { mutableStateOf(initialInFormatFloat) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = null,
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // 输出区块
+                Text(
+                    text = "输出流配置",
+                    modifier = Modifier.padding(bottom = 6.dp),
+                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.primary
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.outline,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "独占:", modifier = Modifier.padding(end = 8.dp))
+                        TextButton(onClick = { outExclusive.value = true }) { Text(text = if (outExclusive.value) "[开]" else "开") }
+                        TextButton(onClick = { outExclusive.value = false }) { Text(text = if (!outExclusive.value) "[关]" else "关") }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "低延迟:", modifier = Modifier.padding(end = 8.dp))
+                        TextButton(onClick = { outLowLatency.value = true }) { Text(text = if (outLowLatency.value) "[开]" else "开") }
+                        TextButton(onClick = { outLowLatency.value = false }) { Text(text = if (!outLowLatency.value) "[关]" else "关") }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "采样率:", modifier = Modifier.padding(end = 8.dp))
+                        listOf(44100, 48000).forEach { sr ->
+                            TextButton(onClick = { outSampleRate.value = sr }) { Text(text = if (outSampleRate.value == sr) "[${sr}]" else "$sr") }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "声道:", modifier = Modifier.padding(end = 8.dp))
+                        listOf(1, 2).forEach { ch ->
+                            TextButton(onClick = { outChannels.value = ch }) { Text(text = if (outChannels.value == ch) "[${ch}]" else "$ch") }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "格式:", modifier = Modifier.padding(end = 8.dp))
+                        TextButton(onClick = { outFormatFloat.value = !outFormatFloat.value }) { Text(text = if (outFormatFloat.value) "float" else "short") }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // 输入区块
+                Text(
+                    text = "输入流配置",
+                    modifier = Modifier.padding(bottom = 6.dp),
+                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.primary
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.outline,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "独占:", modifier = Modifier.padding(end = 8.dp))
+                        TextButton(onClick = { inExclusive.value = true }) { Text(text = if (inExclusive.value) "[开]" else "开") }
+                        TextButton(onClick = { inExclusive.value = false }) { Text(text = if (!inExclusive.value) "[关]" else "关") }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "低延迟:", modifier = Modifier.padding(end = 8.dp))
+                        TextButton(onClick = { inLowLatency.value = true }) { Text(text = if (inLowLatency.value) "[开]" else "开") }
+                        TextButton(onClick = { inLowLatency.value = false }) { Text(text = if (!inLowLatency.value) "[关]" else "关") }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "采样率:", modifier = Modifier.padding(end = 8.dp))
+                        listOf(44100, 48000).forEach { sr ->
+                            TextButton(onClick = { inSampleRate.value = sr }) { Text(text = if (inSampleRate.value == sr) "[${sr}]" else "$sr") }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "声道:", modifier = Modifier.padding(end = 8.dp))
+                        listOf(1, 2).forEach { ch ->
+                            TextButton(onClick = { inChannels.value = ch }) { Text(text = if (inChannels.value == ch) "[${ch}]" else "$ch") }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "格式:", modifier = Modifier.padding(end = 8.dp))
+                        TextButton(onClick = { inFormatFloat.value = !inFormatFloat.value }) { Text(text = if (inFormatFloat.value) "float" else "short") }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onSave(
+                    outExclusive.value,
+                    outLowLatency.value,
+                    outSampleRate.value,
+                    outChannels.value,
+                    outFormatFloat.value,
+                    inExclusive.value,
+                    inLowLatency.value,
+                    inSampleRate.value,
+                    inChannels.value,
+                    inFormatFloat.value
+                )
+            }) { Text("保存") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
 }
 
