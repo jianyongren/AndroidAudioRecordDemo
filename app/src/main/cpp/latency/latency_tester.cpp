@@ -391,9 +391,8 @@ public:
         notifyJavaConfig(buildStreamConfigString(outputStream_.get()), buildStreamConfigString(inputStream_.get()));
         
         // 启动合成线程
-        mergedPcmPath_ = joinPath(cacheDir, "merged_lr_s16le.pcm");
-        std::string mergedPathLocal = mergedPcmPath_;
-        LOGI("mergedPcmPath_=%s", mergedPcmPath_.c_str());
+        std::string mergedPathLocal = joinPath(cacheDir, "merged_lr_f32le.pcm");
+        LOGI("mergedPathLocal=%s", mergedPathLocal.c_str());
         mergeThread_ = std::thread([this, mergedPathLocal]() {
             this->mergeThreadProc(mergedPathLocal);
         });
@@ -562,7 +561,7 @@ private:
         //使用2倍大小的缓存，防止越界
         std::vector<float> leftMonoF(outFramesPerChunk * 2);
         std::vector<float> rightMonoF(outFramesPerChunk * 2);
-        std::vector<int16_t> interleavedS16(outFramesPerChunk * 2);
+        std::vector<float> interleavedFloat(outFramesPerChunk * 2 * 2); // 立体声，所以是2倍帧数
         // 剩余数据缓存：保存上次未处理完的数据
         size_t leftRemainingFrames = 0;
         size_t rightRemainingFrames = 0; 
@@ -606,19 +605,16 @@ private:
                 continue;
             }
 
-            // 对齐后分别写入左右声道（不混合），再交错为 S16 立体声
-            auto clamp16 = [](float x) {
-                if (x > 1.0f) x = 1.0f; if (x < -1.0f) x = -1.0f;
-                return static_cast<int16_t>(std::lrintf(x * 32767.0f));
-            };
+            // 对齐后分别写入左右声道（不混合），再交错为 float 立体声
             for (size_t i = 0; i < frames; ++i) {
                 float l = leftMonoF[i];
                 float r = rightMonoF[i];
-                interleavedS16[2 * i] = clamp16(l);
-                interleavedS16[2 * i + 1] = clamp16(r);
+                interleavedFloat[2 * i] = l;
+                interleavedFloat[2 * i + 1] = r;
             }
-            
-            fwrite(interleavedS16.data(), sizeof(int16_t), frames * 2, fp);
+
+            // 直接写入 float 数据到文件
+            fwrite(interleavedFloat.data(), sizeof(float), frames * 2, fp);
 
             // 处理剩余数据：将未使用的数据移到缓冲区头部
             leftRemainingFrames = lFrames - frames;
@@ -644,8 +640,8 @@ private:
         
         // 自动增益处理：如果右声道音量过低，则放大右声道使其与左声道匹配
         // 在applyAutoGain中会调用detectDelay进行延迟检测
-        if (!mergedPcmPath_.empty() && !errorOccurred_.load()) {
-            applyAutoGain(mergedPcmPath_);
+        if (!mergedPath.empty() && !errorOccurred_.load()) {
+            applyAutoGain(mergedPath);
         }
         
         // 如果发生错误，不进行编码
@@ -656,9 +652,9 @@ private:
         
         // 自动编码合成的 PCM
         int rc = -1;
-        if (!mergedPcmPath_.empty() && !outputM4aPath_.empty()) {
+        if (!mergedPath.empty() && !outputM4aPath_.empty()) {
             // 合成输出为 S16 交错 PCM；如果后续改为 float，修改最后一个参数为 true
-            rc = encode_pcm_to_m4a(mergedPcmPath_.c_str(), outputM4aPath_.c_str(), workingSampleRate_, 2, false);
+            rc = encode_pcm_to_m4a(mergedPath.c_str(), outputM4aPath_.c_str(), workingSampleRate_, 2, false);
             LOGI("auto encode result=%d out=%s", rc, outputM4aPath_.c_str());
         } else {
             LOGE("auto encode skipped: path empty");
@@ -964,6 +960,308 @@ private:
         return delayMs;
     }
 
+    // float 版本的 detectDelayInWindow 函数
+    bool detectDelayInWindow(
+        const std::vector<float>& left,
+        const std::vector<float>& right,
+        size_t windowStart,
+        size_t windowSize,
+        size_t totalFrames,
+        size_t& outDelaySamples,
+        double& outCorrelation) {
+        
+        // 搜索范围：0到500ms（约24000样本@48kHz）
+        const size_t maxDelaySamples = static_cast<size_t>(workingSampleRate_ * 0.5);  // 500ms
+        const size_t searchEnd = std::min(maxDelaySamples, totalFrames - windowStart - windowSize);
+        
+        if (searchEnd < 100 || windowSize < 1000) {
+            return false;
+        }
+        
+        // 归一化互相关：搜索最佳延迟
+        double bestCorr = -1.0;
+        size_t bestDelaySamples = 0;
+        
+        // 为了提高精度，先进行粗搜索（步进10样本），然后对最佳位置附近进行精细搜索
+        const size_t coarseStep = 10;  // 约0.2ms @48kHz
+        
+        // 粗搜索
+        for (size_t delay = 0; delay <= searchEnd && (windowStart + windowSize + delay) < totalFrames; delay += coarseStep) {
+            double corr = 0.0;
+            double leftNorm = 0.0;
+            double rightNorm = 0.0;
+            size_t validSamples = 0;
+            
+            for (size_t i = 0; i < windowSize; ++i) {
+                size_t leftIdx = windowStart + i;
+                size_t rightIdx = windowStart + i + delay;
+                
+                if (leftIdx < totalFrames && rightIdx < totalFrames) {
+                    double lVal = static_cast<double>(left[leftIdx]);
+                    double rVal = static_cast<double>(right[rightIdx]);
+                    corr += lVal * rVal;
+                    leftNorm += lVal * lVal;
+                    rightNorm += rVal * rVal;
+                    validSamples++;
+                }
+            }
+            
+            // 归一化互相关（NCC）
+            if (validSamples > 0 && leftNorm > 0 && rightNorm > 0) {
+                double normalizedCorr = corr / std::sqrt(leftNorm * rightNorm);
+                if (normalizedCorr > bestCorr) {
+                    bestCorr = normalizedCorr;
+                    bestDelaySamples = delay;
+                }
+            }
+        }
+        
+        if (bestCorr < 0) {
+            return false;
+        }
+        
+        // 精细搜索：在最佳位置附近进行样本级精确搜索
+        size_t fineSearchStart = (bestDelaySamples > coarseStep) ? (bestDelaySamples - coarseStep) : 0;
+        size_t fineSearchEnd = std::min(bestDelaySamples + coarseStep, searchEnd);
+        size_t refinedBestDelay = bestDelaySamples;
+        double refinedBestCorr = bestCorr;
+        
+        for (size_t delay = fineSearchStart; delay <= fineSearchEnd && (windowStart + windowSize + delay) < totalFrames; ++delay) {
+            double corr = 0.0;
+            double leftNorm = 0.0;
+            double rightNorm = 0.0;
+            size_t validSamples = 0;
+            
+            for (size_t i = 0; i < windowSize; ++i) {
+                size_t leftIdx = windowStart + i;
+                size_t rightIdx = windowStart + i + delay;
+                
+                if (leftIdx < totalFrames && rightIdx < totalFrames) {
+                    double lVal = static_cast<double>(left[leftIdx]);
+                    double rVal = static_cast<double>(right[rightIdx]);
+                    corr += lVal * rVal;
+                    leftNorm += lVal * lVal;
+                    rightNorm += rVal * rVal;
+                    validSamples++;
+                }
+            }
+            
+            if (validSamples > 0 && leftNorm > 0 && rightNorm > 0) {
+                double normalizedCorr = corr / std::sqrt(leftNorm * rightNorm);
+                if (normalizedCorr > refinedBestCorr) {
+                    refinedBestCorr = normalizedCorr;
+                    refinedBestDelay = delay;
+                }
+            }
+        }
+        
+        outDelaySamples = refinedBestDelay;
+        outCorrelation = refinedBestCorr;
+        return true;
+    }
+
+    // float 版本的 findHighEnergyWindowStarts 函数
+    std::vector<size_t> findHighEnergyWindowStarts(
+        const std::vector<float>& left,
+        size_t totalFrames,
+        size_t windowSize,
+        size_t startOffset) {
+        std::vector<size_t> candidates;
+        if (totalFrames <= startOffset + windowSize) return candidates;
+
+        // 参数：短时窗30ms，扫描步长10ms，命中后跳过700ms
+        const size_t energyWindow = static_cast<size_t>(workingSampleRate_ * 0.03);   // 30ms
+        const size_t energyStep   = static_cast<size_t>(workingSampleRate_ * 0.01);   // 10ms
+        const size_t skipGap      = static_cast<size_t>(workingSampleRate_ * 0.70);   // 命中后跳过700ms
+
+        if (energyWindow == 0 || energyStep == 0) return candidates;
+
+        // -30 dBFS 阈值（使用均方能量比较，避免开方）：
+        // float 范围是 [-1.0, 1.0]，所以 FS = 1.0
+        const double fullScaleSq = 1.0 * 1.0;
+        const double thresholdMeanSq = fullScaleSq * 0.001; // -30 dBFS
+
+        size_t s = startOffset;
+        while (s + energyWindow <= totalFrames) {
+            double sumSq = 0.0;
+            const size_t end = s + energyWindow;
+            for (size_t i = s; i < end; ++i) {
+                const double v = static_cast<double>(left[i]);
+                sumSq += v * v;
+            }
+            const double meanSq = sumSq / static_cast<double>(energyWindow);
+
+            if (meanSq >= thresholdMeanSq) {
+                // 命中一个高能量起点
+                if (s + windowSize <= totalFrames) {
+                    candidates.push_back(s);
+                }
+//                if (candidates.size() >= 30) break; // 限制候选数量
+                // 跳过700ms，避免选到同一数字内部的重复峰
+                s += skipGap;
+            } else {
+                // 正常推进
+                s += energyStep;
+            }
+        }
+
+        return candidates;
+    }
+
+    // float 版本的 detectDelay 函数
+    double detectDelay(const std::vector<float>& left, const std::vector<float>& right, size_t totalFrames) {
+        // 参数配置
+        const size_t windowSize = static_cast<size_t>(workingSampleRate_ * 0.7);  // 700ms秒窗口
+        const size_t startOffset = static_cast<size_t>(workingSampleRate_ * 0.1); // 从0.1秒开始，避开预热期
+
+        // 初始化前3个窗口信息
+        for (int i = 0; i < 3; ++i) {
+            top3Delays_[i] = -1.0;
+            top3Correlations_[i] = -1.0;
+        }
+        
+        if (totalFrames < startOffset + windowSize) {
+            LOGW("detectDelay: Not enough data, totalFrames=%zu, need at least %zu", 
+                 totalFrames, startOffset + windowSize);
+            return -1.0;
+        }
+        
+        // 存储每个窗口的检测结果：延迟值（样本）和相关度
+        struct WindowResult {
+            size_t delaySamples;
+            double correlation;
+            
+            // 用于排序：按相关度降序
+            bool operator<(const WindowResult& other) const {
+                return correlation > other.correlation;  // 降序排序
+            }
+        };
+        std::vector<WindowResult> allResults;
+        const double earlyStopThreshold = 0.5;  // 早期停止阈值：相关度大于此值的窗口数达到3个即可停止
+        const size_t earlyStopCount = 3;        // 早期停止所需的高质量窗口数
+        
+        // 基于能量的候选窗口起点（针对"数字+停顿"的语音结构）
+        const std::vector<size_t> windowStarts = findHighEnergyWindowStarts(left, totalFrames, windowSize, startOffset);
+
+        // 遍历候选窗口进行检测
+        size_t windowCount = 0;
+        size_t highCorrelationCount = 0;  // 相关度>0.5的窗口数
+        for (size_t windowStart : windowStarts) {
+            if (windowStart + windowSize > totalFrames) continue;
+            windowCount++;
+            size_t delaySamples = 0;
+            double correlation = 0.0;
+            if (detectDelayInWindow(left, right, windowStart, windowSize, totalFrames, delaySamples, correlation)) {
+                allResults.push_back({delaySamples, correlation});
+                LOGI("detectDelay: Candidate %zu (start=%.2fs): delay=%zu samples (%.2f ms), correlation=%.4f",
+                     windowCount, windowStart * 1000.0 / workingSampleRate_,
+                     delaySamples, delaySamples * 1000.0 / workingSampleRate_, correlation);
+                if (correlation > earlyStopThreshold) {
+                    highCorrelationCount++;
+                    if (highCorrelationCount >= earlyStopCount) {
+                        LOGI("detectDelay: Early stop triggered: found %zu windows with correlation > %.2f",
+                             highCorrelationCount, earlyStopThreshold);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 如果未获取足够的结果，回退到原先的均匀滑窗策略
+        if (allResults.size() < 3) {
+            LOGW("detectDelay: Not enough results, using uniform sliding window strategy");
+            const size_t windowStep = static_cast<size_t>(workingSampleRate_ * 0.5);   // 50%重叠，0.5秒步进
+            for (size_t windowStart = startOffset; windowStart + windowSize <= totalFrames; windowStart += windowStep) {
+                size_t delaySamples = 0; double correlation = 0.0;
+                if (detectDelayInWindow(left, right, windowStart, windowSize, totalFrames, delaySamples, correlation)) {
+                    allResults.push_back({delaySamples, correlation});
+                }
+            }
+        }
+        
+        if (allResults.empty()) {
+            LOGW("detectDelay: No valid windows found (total windows=%zu)", windowCount);
+            return -1.0;
+        }
+        
+        // 按相关度降序排序
+        std::sort(allResults.begin(), allResults.end());
+        
+        // 使用相关度最高的3个窗口进行统计
+        size_t windowsToUse = std::min(static_cast<size_t>(3), allResults.size());
+        
+        std::vector<WindowResult> selectedResults(allResults.begin(), allResults.begin() + windowsToUse);
+        
+        LOGI("detectDelay: Using top %zu windows (correlation range: %.4f - %.4f) out of %zu total windows",
+             windowsToUse, selectedResults.back().correlation, selectedResults.front().correlation, allResults.size());
+        
+        // 存储前3个窗口的详细信息（用于UI显示）
+        for (size_t i = 0; i < 3 && i < selectedResults.size(); ++i) {
+            top3Delays_[i] = selectedResults[i].delaySamples * 1000.0 / workingSampleRate_;  // 转换为毫秒
+            top3Correlations_[i] = selectedResults[i].correlation;
+            LOGI("detectDelay: Top window #%zu: delay=%.2f ms, correlation=%.4f",
+                 i + 1, top3Delays_[i], top3Correlations_[i]);
+        }
+        
+        // 使用加权平均聚合结果：权重基于相关度
+        // 相关度越高，权重越大
+        double totalWeight = 0.0;
+        double weightedDelaySum = 0.0;
+        
+        for (const auto& result : selectedResults) {
+            // 权重：相关度的平方，使高相关度窗口影响更大
+            double weight = result.correlation * result.correlation;
+            weightedDelaySum += static_cast<double>(result.delaySamples) * weight;
+            totalWeight += weight;
+        }
+        
+        if (totalWeight <= 0.0) {
+            LOGW("detectDelay: Total weight is zero");
+            return -1.0;
+        }
+        
+        size_t averageDelaySamples = static_cast<size_t>(weightedDelaySum / totalWeight + 0.5);
+        double delayMs = averageDelaySamples * 1000.0 / workingSampleRate_;
+        
+        // 计算标准差，验证一致性
+        double variance = 0.0;
+        for (const auto& result : selectedResults) {
+            double weight = result.correlation * result.correlation;
+            double diff = static_cast<double>(result.delaySamples) - static_cast<double>(averageDelaySamples);
+            variance += weight * diff * diff;
+        }
+        double stdDevSamples = std::sqrt(variance / totalWeight);
+        double stdDevMs = stdDevSamples * 1000.0 / workingSampleRate_;
+        
+        // 计算平均相关度
+        double avgCorrelation = 0.0;
+        for (const auto& result : selectedResults) {
+            avgCorrelation += result.correlation;
+        }
+        avgCorrelation /= selectedResults.size();
+        
+        LOGI("detectDelay: Multi-window result - using %zu/%zu windows, average delay=%.2f ms (std=%.2f ms), avg correlation=%.4f",
+             windowsToUse, allResults.size(), delayMs, stdDevMs, avgCorrelation);
+        
+        // 如果标准差过大，警告可能不准确
+        if (stdDevMs > 5.0) {
+            LOGW("detectDelay: High standard deviation (%.2f ms), delay may be inaccurate", stdDevMs);
+        }
+        
+        return delayMs;
+    }
+
+    // float 版本的 detectDelay 函数（立体声交错）
+    double detectDelay(const std::vector<float>& interleaved, size_t totalFrames) {
+        std::vector<float> leftChannel(totalFrames);
+        std::vector<float> rightChannel(totalFrames);
+        for (size_t i = 0; i < totalFrames; ++i) {
+            leftChannel[i] = interleaved[i * 2];
+            rightChannel[i] = interleaved[i * 2 + 1];
+        }
+        return detectDelay(leftChannel, rightChannel, totalFrames);
+    }
+
     double detectDelay(const std::vector<int16_t>& interleaved, size_t totalFrames) {
         std::vector<int16_t> leftChannel(totalFrames);
         std::vector<int16_t> rightChannel(totalFrames);
@@ -986,18 +1284,17 @@ private:
         fseek(fp, 0, SEEK_END);
         long fileSize = ftell(fp);
         fseek(fp, 0, SEEK_SET);
-        if (fileSize <= 0 || fileSize % (kChannelCount * kBytesPerSample) != 0) {
+        if (fileSize <= 0 || fileSize % (kChannelCount * sizeof(float)) != 0) {
             LOGE("applyAutoGain: Invalid PCM file size: %ld", fileSize);
             fclose(fp);
             return;
         }
         
-        size_t totalSamples = static_cast<size_t>(fileSize) / (kChannelCount * kBytesPerSample);
-        size_t totalFrames = totalSamples;
+        size_t totalFrames = static_cast<size_t>(fileSize) / (kChannelCount * sizeof(float));
         
-        // 读取整个文件到内存
-        std::vector<int16_t> interleaved(totalFrames * kChannelCount);
-        size_t readFrames = fread(interleaved.data(), sizeof(int16_t), totalFrames * kChannelCount, fp);
+        // 读取整个文件到内存（float 格式）
+        std::vector<float> interleavedFloat(totalFrames * kChannelCount);
+        size_t readFrames = fread(interleavedFloat.data(), sizeof(float), totalFrames * kChannelCount, fp);
         fclose(fp);
         
         if (readFrames != totalFrames * kChannelCount) {
@@ -1006,8 +1303,8 @@ private:
             return;
         }
         
-        // 检测延迟：右声道相对左声道的延迟
-        detectedDelayMs_ = detectDelay(interleaved, totalFrames);
+        // 检测延迟：右声道相对左声道的延迟（使用 float 数据）
+        detectedDelayMs_ = detectDelay(interleavedFloat, totalFrames);
         if (detectedDelayMs_ >= 0) {
             LOGI("applyAutoGain: Detected delay = %.2f ms", detectedDelayMs_);
         } else {
@@ -1017,18 +1314,18 @@ private:
         // 分离左右声道并计算RMS和峰值
         double leftSumSquares = 0.0;
         double rightSumSquares = 0.0;
-        int16_t leftPeak = 0;
-        int16_t rightPeak = 0;
+        float leftPeak = 0.0f;
+        float rightPeak = 0.0f;
         
         for (size_t i = 0; i < totalFrames; ++i) {
-            int16_t leftSample = interleaved[i * kChannelCount];
-            int16_t rightSample = interleaved[i * kChannelCount + 1];
+            float leftSample = interleavedFloat[i * kChannelCount];
+            float rightSample = interleavedFloat[i * kChannelCount + 1];
             
             leftSumSquares += static_cast<double>(leftSample) * leftSample;
             rightSumSquares += static_cast<double>(rightSample) * rightSample;
             
-            int16_t leftAbs = std::abs(leftSample);
-            int16_t rightAbs = std::abs(rightSample);
+            float leftAbs = std::abs(leftSample);
+            float rightAbs = std::abs(rightSample);
             if (leftAbs > leftPeak) leftPeak = leftAbs;
             if (rightAbs > rightPeak) rightPeak = rightAbs;
         }
@@ -1037,7 +1334,7 @@ private:
         double leftRms = std::sqrt(leftSumSquares / totalFrames);
         double rightRms = std::sqrt(rightSumSquares / totalFrames);
         
-        LOGI("applyAutoGain: Left RMS=%.2f, Peak=%d | Right RMS=%.2f, Peak=%d", 
+        LOGI("applyAutoGain: Left RMS=%.2f, Peak=%.4f | Right RMS=%.2f, Peak=%.4f", 
              leftRms, leftPeak, rightRms, rightPeak);
         
         // 如果右声道RMS太小（小于左声道的20%），则进行增益处理
@@ -1046,10 +1343,10 @@ private:
             // 计算基于RMS的增益
             double gainRms = leftRms / rightRms;
             
-            // 峰值保护：确保放大后不会超过INT16_MAX
+            // 峰值保护：确保放大后不会超过1.0
             double maxGainFromPeak = 1.0;
             if (rightPeak > 0) {
-                maxGainFromPeak = static_cast<double>(INT16_MAX) / static_cast<double>(rightPeak);
+                maxGainFromPeak = 1.0 / rightPeak;  // float 范围是 [-1.0, 1.0]
             }
             
             // 使用较小的增益值，避免削波
@@ -1060,38 +1357,47 @@ private:
             
             // 应用增益到右声道
             for (size_t i = 0; i < totalFrames; ++i) {
-                double newSample = static_cast<double>(interleaved[i * kChannelCount + 1]) * finalGain;
-                // 限制在int16范围内
-                if (newSample > INT16_MAX) {
-                    interleaved[i * kChannelCount + 1] = INT16_MAX;
-                } else if (newSample < INT16_MIN) {
-                    interleaved[i * kChannelCount + 1] = INT16_MIN;
+                float newSample = interleavedFloat[i * kChannelCount + 1] * static_cast<float>(finalGain);
+                // 限制在float范围内 [-1.0, 1.0]
+                if (newSample > 1.0f) {
+                    interleavedFloat[i * kChannelCount + 1] = 1.0f;
+                } else if (newSample < -1.0f) {
+                    interleavedFloat[i * kChannelCount + 1] = -1.0f;
                 } else {
-                    interleaved[i * kChannelCount + 1] = static_cast<int16_t>(newSample);
+                    interleavedFloat[i * kChannelCount + 1] = newSample;
                 }
             }
             
             // 重新验证增益后的RMS和峰值
             double newRightSumSquares = 0.0;
-            int16_t newRightPeak = 0;
+            float newRightPeak = 0.0f;
             for (size_t i = 0; i < totalFrames; ++i) {
-                int16_t rightSample = interleaved[i * kChannelCount + 1];
+                float rightSample = interleavedFloat[i * kChannelCount + 1];
                 newRightSumSquares += static_cast<double>(rightSample) * rightSample;
-                int16_t rightAbs = std::abs(rightSample);
+                float rightAbs = std::abs(rightSample);
                 if (rightAbs > newRightPeak) newRightPeak = rightAbs;
             }
             double newRightRms = std::sqrt(newRightSumSquares / totalFrames);
-            LOGI("applyAutoGain: After gain - Right RMS=%.2f, Peak=%d", newRightRms, newRightPeak);
+            LOGI("applyAutoGain: After gain - Right RMS=%.2f, Peak=%.4f", newRightRms, newRightPeak);
             
-            // 写回文件
+            // 将 float 转换为 int16 并写回文件
+            std::vector<int16_t> interleavedS16(totalFrames * kChannelCount);
+            auto clamp16 = [](float x) {
+                if (x > 1.0f) x = 1.0f; if (x < -1.0f) x = -1.0f;
+                return static_cast<int16_t>(std::lrintf(x * 32767.0f));
+            };
+            for (size_t i = 0; i < totalFrames * kChannelCount; ++i) {
+                interleavedS16[i] = clamp16(interleavedFloat[i]);
+            }
+            
             FILE* outFp = fopen(pcmPath.c_str(), "wb");
             if (!outFp) {
                 LOGE("applyAutoGain: Failed to open PCM file for writing: %s", pcmPath.c_str());
                 return;
             }
-            fwrite(interleaved.data(), sizeof(int16_t), totalFrames * kChannelCount, outFp);
+            fwrite(interleavedS16.data(), sizeof(int16_t), totalFrames * kChannelCount, outFp);
             fclose(outFp);
-            LOGI("applyAutoGain: Successfully applied gain and saved to file");
+            LOGI("applyAutoGain: Successfully applied gain, converted to int16 and saved to file");
         } else {
             LOGI("applyAutoGain: Right channel volume is sufficient (ratio=%.2f), no gain applied", 
                  leftRms > 0 ? rightRms / leftRms : 0.0);
@@ -1266,7 +1572,6 @@ private:
         }
         
         // 清空路径
-        mergedPcmPath_.clear();
         decodedPcmPath_.clear();
         outputM4aPath_.clear();
         detectedDelayMs_ = -1.0;  // 重置延迟值
@@ -1289,7 +1594,6 @@ private:
     std::chrono::steady_clock::time_point startTime_;
     AudioRingBuffer* origRb_ = nullptr;   // 原始PCM（输入格式存储，输出为统一格式）
     AudioRingBuffer* recRb_  = nullptr;   // 录音PCM（输入格式存储，输出为统一格式）
-    std::string mergedPcmPath_;      // 合成PCM输出
     std::string decodedPcmPath_;     // 解码后的原始PCM
     std::string outputM4aPath_;     // 目标输出m4a
     JavaVM* vm_ = nullptr;           // JavaVM for callbacks
@@ -1420,5 +1724,3 @@ Java_me_rjy_oboe_record_demo_LatencyTesterActivity_stopLatencyTest(
     // 编码已在合成线程结束后自动执行
     return 0;
 }
-
-
