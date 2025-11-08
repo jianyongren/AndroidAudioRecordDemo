@@ -14,6 +14,9 @@
     <string name="select_action">Select Action</string>
     <string name="cancel">Cancel</string>
     <string name="output_file">Output file: %1$s</string>
+    <!-- Latency tester stream configuration -->
+    <string name="actual_output_stream_params">Actual output stream params: %1$s</string>
+    <string name="actual_input_stream_params">Actual input stream params: %1$s</string>
     <!-- Launcher strings -->
     <string name="launcher_select_function">Please select a feature</string>
     <string name="launcher_go_record">Record</string>

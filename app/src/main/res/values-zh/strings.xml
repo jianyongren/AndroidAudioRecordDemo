@@ -13,6 +13,9 @@
     <string name="select_action">选择操作</string>
     <string name="cancel">取消</string>
     <string name="output_file">输出文件: %1$s</string>
+    <!-- Latency tester stream configuration -->
+    <string name="actual_output_stream_params">实际输出流参数: %1$s</string>
+    <string name="actual_input_stream_params">实际输入流参数: %1$s</string>
     <!-- Launcher strings -->
     <string name="launcher_select_function">请选择功能</string>
     <string name="launcher_go_record">录制页面</string>
@@ -81,5 +84,3 @@
     <string name="audio_device_telephony">电话通话</string>
     <string name="audio_device_other">其他%1$d</string>
 </resources>
-
-

@@ -418,14 +418,14 @@ private fun LatencyTesterUI(
         // 设备实际使用的参数展示
         actualOutConfig.value?.let { cfg ->
             Text(
-                text = "实际输出流参数: $cfg",
+                text = androidx.compose.ui.res.stringResource(R.string.actual_output_stream_params, cfg),
                 modifier = Modifier.padding(bottom = 8.dp),
                 style = androidx.compose.material3.MaterialTheme.typography.bodySmall
             )
         }
         actualInConfig.value?.let { cfg ->
             Text(
-                text = "实际输入流参数: $cfg",
+                text = androidx.compose.ui.res.stringResource(R.string.actual_input_stream_params, cfg),
                 modifier = Modifier.padding(bottom = 16.dp),
                 style = androidx.compose.material3.MaterialTheme.typography.bodySmall
             )
@@ -709,5 +709,3 @@ private fun ConfigDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
 }
-
-

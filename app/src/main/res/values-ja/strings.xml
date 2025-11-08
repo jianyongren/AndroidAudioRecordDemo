@@ -13,6 +13,9 @@
     <string name="select_action">アクションを選択</string>
     <string name="cancel">キャンセル</string>
     <string name="output_file">出力ファイル: %1$s</string>
+    <!-- Latency tester stream configuration -->
+    <string name="actual_output_stream_params">実際の出力ストリームパラメータ: %1$s</string>
+    <string name="actual_input_stream_params">実際の入力ストリームパラメータ: %1$s</string>
     <!-- Launcher strings -->
     <string name="launcher_select_function">機能を選択してください</string>
     <string name="launcher_go_record">録音ページ</string>
@@ -81,5 +84,3 @@
     <string name="audio_device_telephony">電話</string>
     <string name="audio_device_other">その他%1$d</string>
 </resources>
-
-
