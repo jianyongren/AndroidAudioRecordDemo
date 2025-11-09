@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 package me.rjy.oboe.record.demo
 
 import android.Manifest
@@ -12,6 +12,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -41,9 +44,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -110,6 +116,7 @@ class LatencyTesterActivity : ComponentActivity() {
                 val outputFilePath = remember { mutableStateOf<String?>(null) }
                 val showActionDialog = remember { mutableStateOf<String?>(null) }
                 val showConfigDialog = remember { mutableStateOf(false) }
+                val showHistoryDialog = remember { mutableStateOf(false) }
 
                 // 用户可配置参数（输出/输入）
                 val outExclusive = remember { mutableStateOf(true) }
@@ -158,6 +165,11 @@ class LatencyTesterActivity : ComponentActivity() {
                         TopAppBar(
                             title = { },
                             actions = {
+                                // 历史图标按钮
+                                IconButton(onClick = { showHistoryDialog.value = true }) {
+                                    Icon(imageVector = Icons.Default.History, contentDescription = "历史记录")
+                                }
+                                // 配置图标按钮
                                 IconButton(onClick = { showConfigDialog.value = true }) {
                                     Icon(imageVector = Icons.Default.Settings, contentDescription = "配置")
                                 }
@@ -311,6 +323,16 @@ class LatencyTesterActivity : ComponentActivity() {
                             }
                         )
                     }
+
+                    if (showHistoryDialog.value) {
+                        HistoryDialog(
+                            onDismiss = { showHistoryDialog.value = false },
+                            onFileSelected = { filePath ->
+                                showHistoryDialog.value = false
+                                startActivity(Intent(this@LatencyTesterActivity, AudioPlayerActivity::class.java).putExtra("file_path", filePath))
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -405,12 +427,12 @@ private fun LatencyTesterUI(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = androidx.compose.ui.res.stringResource(R.string.title_recording_latency_test),
+            text = stringResource(R.string.title_recording_latency_test),
             modifier = Modifier.padding(bottom = 24.dp),
             style = androidx.compose.material3.MaterialTheme.typography.headlineMedium
         )
         Text(
-            text = androidx.compose.ui.res.stringResource(R.string.using_builtin_audio),
+            text = stringResource(R.string.using_builtin_audio),
             modifier = Modifier.padding(bottom = 16.dp),
             style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
         )
@@ -418,14 +440,14 @@ private fun LatencyTesterUI(
         // 设备实际使用的参数展示
         actualOutConfig.value?.let { cfg ->
             Text(
-                text = androidx.compose.ui.res.stringResource(R.string.actual_output_stream_params, cfg),
+                text = stringResource(R.string.actual_output_stream_params, cfg),
                 modifier = Modifier.padding(bottom = 8.dp),
                 style = androidx.compose.material3.MaterialTheme.typography.bodySmall
             )
         }
         actualInConfig.value?.let { cfg ->
             Text(
-                text = androidx.compose.ui.res.stringResource(R.string.actual_input_stream_params, cfg),
+                text = stringResource(R.string.actual_input_stream_params, cfg),
                 modifier = Modifier.padding(bottom = 16.dp),
                 style = androidx.compose.material3.MaterialTheme.typography.bodySmall
             )
@@ -447,7 +469,7 @@ private fun LatencyTesterUI(
 
         if (isDetecting.value) {
             Text(
-                text = androidx.compose.ui.res.stringResource(R.string.detecting_latency),
+                text = stringResource(R.string.detecting_latency),
                 modifier = Modifier.padding(bottom = 16.dp),
                 style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.secondary
@@ -456,7 +478,7 @@ private fun LatencyTesterUI(
 
         detectedDelay.value?.let { delay ->
             Text(
-                text = androidx.compose.ui.res.stringResource(R.string.average_delay, delay),
+                text = stringResource(R.string.average_delay, delay),
                 modifier = Modifier.padding(bottom = 16.dp),
                 style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.primary
@@ -467,14 +489,14 @@ private fun LatencyTesterUI(
 
         top3Windows.value?.let { windows ->
             Text(
-                text = androidx.compose.ui.res.stringResource(R.string.highest_correlation_windows),
+                text = stringResource(R.string.highest_correlation_windows),
                 modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
                 style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.secondary
             )
             windows.forEachIndexed { index, (d, c) ->
                 Text(
-                    text = androidx.compose.ui.res.stringResource(R.string.window_info, index + 1, d, c),
+                    text = stringResource(R.string.window_info, index + 1, d, c),
                     modifier = Modifier.padding(vertical = 4.dp),
                     style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
                 )
@@ -488,7 +510,7 @@ private fun LatencyTesterUI(
 
         outputFilePath.value?.let { filePath ->
             Text(
-                text = androidx.compose.ui.res.stringResource(R.string.output_file, filePath),
+                text = stringResource(R.string.output_file, filePath),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp, horizontal = 16.dp)
@@ -506,7 +528,7 @@ private fun LatencyTesterUI(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null)
-                Text(text = androidx.compose.ui.res.stringResource(R.string.start_test), modifier = Modifier.padding(start = 8.dp))
+                Text(text = stringResource(R.string.start_test), modifier = Modifier.padding(start = 8.dp))
             }
         } else {
             Button(
@@ -516,7 +538,7 @@ private fun LatencyTesterUI(
             ) {
                 Icon(imageVector = Icons.Default.Stop, contentDescription = null)
                 Text(
-                    text = if (isBusy.value || isDetecting.value) androidx.compose.ui.res.stringResource(R.string.processing) else androidx.compose.ui.res.stringResource(
+                    text = if (isBusy.value || isDetecting.value) stringResource(R.string.processing) else stringResource(
                         R.string.stop_and_save
                     ),
                     modifier = Modifier.padding(start = 8.dp)
@@ -708,4 +730,127 @@ private fun ConfigDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
+}
+
+private fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${(bytes / 1024.0).toInt()} KB"
+        bytes < 1024 * 1024 * 1024 -> "${(bytes / (1024.0 * 1024.0)).toInt()} MB"
+        else -> "${(bytes / (1024.0 * 1024.0 * 1024.0)).toInt()} GB"
+    }
+}
+
+@Composable
+private fun HistoryDialog(
+    onDismiss: () -> Unit,
+    onFileSelected: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val files = remember { mutableStateOf<List<File>>(emptyList()) }
+    val fileToDelete = remember { mutableStateOf<File?>(null) }
+    val showDeleteDialog = remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    
+    // 重新加载文件列表的函数（挂起函数）
+    suspend fun reloadFiles() {
+        withContext(Dispatchers.IO) {
+            val dir = context.getExternalFilesDir(null) ?: context.filesDir
+            val matchedFiles = dir.listFiles { file ->
+                file.isFile && file.name.startsWith("numbers_1_to_30_latency_") && file.name.endsWith(".m4a")
+            }?.toList().orEmpty()
+            
+            files.value = matchedFiles.sortedByDescending { it.lastModified() }
+        }
+    }
+    
+    // 初始加载文件列表
+    LaunchedEffect(Unit) {
+        reloadFiles()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.history_dialog_title)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp)
+            ) {
+                if (files.value.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.history_no_records),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                } else {
+                    androidx.compose.foundation.lazy.LazyColumn {
+                        items(files.value.size) { index ->
+                            val file = files.value[index]
+                            Text(
+                                text = "${file.name} (${formatFileSize(file.length())})",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = { onFileSelected(file.absolutePath) },
+                                        onLongClick = {
+                                            fileToDelete.value = file
+                                            showDeleteDialog.value = true
+                                        }
+                                    )
+                                    .padding(vertical = 8.dp, horizontal = 16.dp),
+                                style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.history_close)) } }
+    )
+    
+    // 删除确认弹窗
+    if (showDeleteDialog.value) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteDialog.value = false
+                fileToDelete.value = null
+            },
+            title = { Text(text = stringResource(R.string.delete_file_dialog_title)) },
+            text = {
+                Text(text = stringResource(R.string.delete_file_confirmation, fileToDelete.value?.name ?: ""))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // 在后台线程中删除文件
+                        coroutineScope.launch {
+                            withContext(Dispatchers.IO) {
+                                fileToDelete.value?.delete()
+                                // 重新加载文件列表
+                                reloadFiles()
+                            }
+                            showDeleteDialog.value = false
+                            fileToDelete.value = null
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.delete_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog.value = false
+                        fileToDelete.value = null
+                    }
+                ) {
+                    Text(stringResource(R.string.delete_cancel))
+                }
+            }
+        )
+    }
 }

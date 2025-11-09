@@ -83,4 +83,12 @@
     <string name="audio_device_fm_tuner">FM调频</string>
     <string name="audio_device_telephony">电话通话</string>
     <string name="audio_device_other">其他%1$d</string>
+    <!-- History dialog strings -->
+    <string name="history_dialog_title">历史记录</string>
+    <string name="history_no_records">暂无历史记录</string>
+    <string name="history_close">关闭</string>
+    <string name="delete_file_dialog_title">删除文件</string>
+    <string name="delete_file_confirmation">确定要删除文件 \"%1$s\" 吗？此操作不可恢复。</string>
+    <string name="delete_confirm">确认</string>
+    <string name="delete_cancel">取消</string>
 </resources>

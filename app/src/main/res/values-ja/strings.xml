@@ -83,4 +83,12 @@
     <string name="audio_device_fm_tuner">FMチューナー</string>
     <string name="audio_device_telephony">電話</string>
     <string name="audio_device_other">その他%1$d</string>
+    <!-- History dialog strings -->
+    <string name="history_dialog_title">履歴</string>
+    <string name="history_no_records">履歴記録がありません</string>
+    <string name="history_close">閉じる</string>
+    <string name="delete_file_dialog_title">ファイル削除</string>
+    <string name="delete_file_confirmation">ファイル \"%1$s\" を削除してもよろしいですか？この操作は元に戻せません。</string>
+    <string name="delete_confirm">確認</string>
+    <string name="delete_cancel">キャンセル</string>
 </resources>

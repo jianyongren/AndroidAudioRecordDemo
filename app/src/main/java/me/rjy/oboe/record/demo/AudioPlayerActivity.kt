@@ -17,11 +17,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import me.rjy.oboe.record.demo.ui.WaveformPlayView
 import me.rjy.oboe.record.demo.ui.theme.OboeRecordDemoTheme
 import java.io.File
 import java.util.*
@@ -89,6 +91,29 @@ private fun AudioPlayerScreen(
     var mediaPlayer: MediaPlayer? by remember { mutableStateOf(null) }
     var errorMessage: String? by remember { mutableStateOf(null) }
     val context = LocalContext.current
+    
+    // 波形数据状态
+    val waveformData = remember { mutableStateOf<AudioDecoder.WaveformData?>(null) }
+    val playbackProgress = remember { mutableFloatStateOf(0f) }
+    
+    
+    // 加载波形数据
+    LaunchedEffect(filePath) {
+        try {
+            val decoder = AudioDecoder()
+            waveformData.value = decoder.extractWaveform(filePath)
+            Log.d("AudioPlayerActivity", "Waveform data loaded: ${waveformData.value?.audioInfo}")
+        } catch (e: Exception) {
+            Log.e("AudioPlayerActivity", "Failed to load waveform data", e)
+        }
+    }
+    
+    // 更新播放进度
+    LaunchedEffect(isPlaying.value, mediaPlayer, currentPosition.value, duration.value) {
+        if (duration.value > 0) {
+            playbackProgress.floatValue = currentPosition.value.toFloat() / duration.value
+        }
+    }
 
     // 初始化 MediaPlayer
     LaunchedEffect(filePath) {
@@ -206,7 +231,27 @@ private fun AudioPlayerScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 波形显示
+            waveformData.value?.let { data ->
+                // 创建 PlaybackWaveform 数据
+                val playbackWaveform = RecorderViewModel.PlaybackWaveform(
+                    leftChannel = data.leftChannel,
+                    rightChannel = data.rightChannel,
+                    totalSamples = data.audioInfo.totalSamples.toInt()
+                )
+                
+                WaveformPlayView(
+                    waveform = playbackWaveform,
+                    progress = playbackProgress.floatValue,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             // 播放进度
             Column(
@@ -258,4 +303,3 @@ private fun formatTime(milliseconds: Int): String {
     val seconds = totalSeconds % 60
     return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
 }
-

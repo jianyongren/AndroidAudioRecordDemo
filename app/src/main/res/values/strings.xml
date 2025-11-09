@@ -84,4 +84,12 @@
     <string name="audio_device_fm_tuner">FM Tuner</string>
     <string name="audio_device_telephony">Telephony</string>
     <string name="audio_device_other">Other %1$d</string>
+    <!-- History dialog strings -->
+    <string name="history_dialog_title">History</string>
+    <string name="history_no_records">No history records</string>
+    <string name="history_close">Close</string>
+    <string name="delete_file_dialog_title">Delete File</string>
+    <string name="delete_file_confirmation">Are you sure you want to delete file \"%1$s\"? This action cannot be undone.</string>
+    <string name="delete_confirm">Confirm</string>
+    <string name="delete_cancel">Cancel</string>
 </resources>
