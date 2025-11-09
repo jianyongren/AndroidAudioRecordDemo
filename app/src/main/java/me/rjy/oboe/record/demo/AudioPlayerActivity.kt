@@ -164,129 +164,144 @@ private fun AudioPlayerScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // 自定义顶部栏（避免使用实验性 API）
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.primaryContainer
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // 自定义顶部栏（避免使用实验性 API）
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.primaryContainer
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = stringResource(id = R.string.common_back)
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = fileName,
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-        
-        // 内容区域
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            // 错误信息
-            errorMessage?.let { error ->
-                Text(
-                    text = error,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-            }
-
-            // 播放/暂停按钮
-            IconButton(
-                onClick = {
-                    mediaPlayer?.let { mp ->
-                        if (isPlaying.value) {
-                            mp.pause()
-                            isPlaying.value = false
-                        } else {
-                            mp.start()
-                            isPlaying.value = true
-                        }
-                    }
-                },
-                modifier = Modifier.size(64.dp)
-            ) {
-                Icon(
-                    imageVector = if (isPlaying.value) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying.value) stringResource(id = R.string.common_pause) else stringResource(id = R.string.common_play),
-                    modifier = Modifier.size(48.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 波形显示
-            waveformData.value?.let { data ->
-                // 创建 PlaybackWaveform 数据
-                val playbackWaveform = RecorderViewModel.PlaybackWaveform(
-                    leftChannel = data.leftChannel,
-                    rightChannel = data.rightChannel,
-                    totalSamples = data.audioInfo.totalSamples.toInt()
-                )
-                
-                WaveformPlayView(
-                    waveform = playbackWaveform,
-                    progress = playbackProgress.floatValue,
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(150.dp)
-                )
-                
-                Spacer(modifier = Modifier.height(16.dp))
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = stringResource(id = R.string.common_back),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = fileName,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
-
-            // 播放进度
+            
+            // 内容区域
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                // 进度条
-                Slider(
-                    value = if (duration.value > 0) currentPosition.value.toFloat() / duration.value else 0f,
-                    onValueChange = { newValue ->
+                // 错误信息
+                errorMessage?.let { error ->
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                }
+
+                // 播放/暂停按钮
+                IconButton(
+                    onClick = {
                         mediaPlayer?.let { mp ->
-                            val newPosition = (newValue * duration.value).toInt()
-                            mp.seekTo(newPosition)
-                            currentPosition.value = newPosition
+                            if (isPlaying.value) {
+                                mp.pause()
+                                isPlaying.value = false
+                            } else {
+                                mp.start()
+                                isPlaying.value = true
+                            }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = duration.value > 0
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 时间显示
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.size(64.dp)
                 ) {
-                    Text(
-                        text = formatTime(currentPosition.value),
-                        style = MaterialTheme.typography.bodySmall
+                    Icon(
+                        imageVector = if (isPlaying.value) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying.value) stringResource(id = R.string.common_pause) else stringResource(id = R.string.common_play),
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.primary
                     )
-                    Text(
-                        text = formatTime(duration.value),
-                        style = MaterialTheme.typography.bodySmall
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 波形显示
+                waveformData.value?.let { data ->
+                    // 创建 PlaybackWaveform 数据
+                    val playbackWaveform = RecorderViewModel.PlaybackWaveform(
+                        leftChannel = data.leftChannel,
+                        rightChannel = data.rightChannel,
+                        totalSamples = data.audioInfo.totalSamples.toInt()
                     )
+                    
+                    WaveformPlayView(
+                        waveform = playbackWaveform,
+                        progress = playbackProgress.floatValue,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                // 播放进度
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // 进度条
+                    Slider(
+                        value = if (duration.value > 0) currentPosition.value.toFloat() / duration.value else 0f,
+                        onValueChange = { newValue ->
+                            mediaPlayer?.let { mp ->
+                                val newPosition = (newValue * duration.value).toInt()
+                                mp.seekTo(newPosition)
+                                currentPosition.value = newPosition
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = duration.value > 0,
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f)
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 时间显示
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = formatTime(currentPosition.value),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = formatTime(duration.value),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
                 }
             }
         }
