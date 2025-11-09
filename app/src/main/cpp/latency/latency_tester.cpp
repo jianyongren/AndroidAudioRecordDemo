@@ -57,7 +57,7 @@ public:
                 return oboe::DataCallbackResult::Stop;
             }
             
-            const int ch = tester_->workingChannelCount_ > 0 ? tester_->workingChannelCount_ : kChannelCount;
+            const int ch = tester_->outChannelCount_;
             const bool fmtFloat = tester_->outFormatFloat_;
             const size_t bytesPerSample = fmtFloat ? sizeof(float) : kBytesPerSample;
             const size_t bytesPerFrame = static_cast<size_t>(ch) * bytesPerSample;
@@ -153,7 +153,7 @@ public:
         
         oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) override {
             if (!tester_ || !tester_->running_.load()) return oboe::DataCallbackResult::Stop;
-            const int ch = tester_->workingChannelCount_ > 0 ? tester_->workingChannelCount_ : kChannelCount;
+            const int ch = tester_->inChannelCount_;
             // 严格按录音流参数写入原始数据到环形缓冲（不做格式转换）
             if (audioStream->getFormat() == oboe::AudioFormat::I16) {
                 size_t bytes = static_cast<size_t>(numFrames) * ch * kBytesPerSample;
@@ -229,24 +229,14 @@ public:
             mergeThread_.join();
         }
         
-        // 运行前的参数校验与归一化，保持低延迟假设
-        if (workingSampleRate_ <= 0) {
-            LOGW("Invalid sampleRate=%d, fallback to 48000", workingSampleRate_);
-            workingSampleRate_ = 48000;
-        }
-        if (workingChannelCount_ <= 0 || workingChannelCount_ > 2) {
-            LOGW("Unsupported channelCount=%d, normalize to mono", workingChannelCount_);
-            workingChannelCount_ = 1;
-        }
-        
         // Step 1: 解码原始音频为严格匹配播放配置的交错 PCM（S16 或 Float）
         // 显式指定输出PCM文件名，避免函数签名不匹配
         std::string outPcmName = outFormatFloat_ ? std::string("orig_f32le.pcm") : std::string("orig_s16le.pcm");
         decodedPcmPath_ = decode_to_pcm_interleaved(
                 inputPath.c_str(),
                 cacheDir.c_str(),
-                workingSampleRate_,
-                workingChannelCount_,
+                outSampleRate_,
+                outChannelCount_,
                 outPcmName.c_str(),
                 outFormatFloat_);
         // 标记解码格式（用于播放路径的健壮处理）
@@ -274,17 +264,22 @@ public:
         }
         
         // 初始化环形缓冲（按字节容量分配），并设置输入/输出格式
-        size_t bytesPerSec = static_cast<size_t>(workingSampleRate_) * workingChannelCount_ * (outFormatFloat_ ? sizeof(float) : kBytesPerSample);
-        size_t capBytes = bytesPerSec * kRingBufferMs / 1000;
-        origRb_ = new AudioRingBuffer(capBytes);
-        recRb_  = new AudioRingBuffer(capBytes);
+        // 分别使用各自的参数计算缓冲区容量，精确分配内存
+        size_t outBytesPerSec = static_cast<size_t>(outSampleRate_) * outChannelCount_ * sizeof(float);
+        size_t outCapBytes = outBytesPerSec * kRingBufferMs / 1000;
+        size_t inBytesPerSec = static_cast<size_t>(inSampleRate_) * inChannelCount_ * sizeof(float);
+        size_t inCapBytes = inBytesPerSec * kRingBufferMs / 1000;
+        origRb_ = new AudioRingBuffer(outCapBytes);
+        recRb_  = new AudioRingBuffer(inCapBytes);
         if (origRb_) {
-            origRb_->init({workingSampleRate_, workingChannelCount_, outFormatFloat_},
-                          {48000, 1, true});
+            // 输出流格式 -> 统一格式(48kHz/mono/float)
+            origRb_->init({outSampleRate_, outChannelCount_, outFormatFloat_},
+                          {kSampleRate, 1, true});
         }
         if (recRb_) {
-            recRb_->init({workingSampleRate_, workingChannelCount_, inFormatFloat_},
-                         {48000, 1, true});
+            // 输入流格式 -> 统一格式(48kHz/mono/float)
+            recRb_->init({inSampleRate_, inChannelCount_, inFormatFloat_},
+                         {kSampleRate, 1, true});
         }
         
         // 读取PCM文件到内存（最大50M）
@@ -302,8 +297,8 @@ public:
         outBuilder.setDirection(oboe::Direction::Output)
                 ->setSharingMode(outExclusive_ ? oboe::SharingMode::Exclusive : oboe::SharingMode::Shared)
                 ->setPerformanceMode(outLowLatency_ ? oboe::PerformanceMode::LowLatency : oboe::PerformanceMode::None)
-                ->setSampleRate(workingSampleRate_)
-                ->setChannelCount(workingChannelCount_)
+                ->setSampleRate(outSampleRate_)
+                ->setChannelCount(outChannelCount_)
                 ->setFormat(outFormatFloat_ ? oboe::AudioFormat::Float : oboe::AudioFormat::I16)
                 ->setCallback(playCb_.get());
         oboe::AudioStream* outRaw = nullptr;
@@ -323,8 +318,8 @@ public:
                 LOGI("Output buffer optimized: %d -> %d frames (%.2f ms -> %.2f ms)",
                      outInitialBufferSize,
                      outBufResult.value(),
-                     outInitialBufferSize * 1000.0 / workingSampleRate_,
-                     outBufResult.value() * 1000.0 / workingSampleRate_);
+                     outInitialBufferSize * 1000.0 / outSampleRate_,
+                     outBufResult.value() * 1000.0 / outSampleRate_);
             }
 
         }
@@ -340,8 +335,8 @@ public:
         inBuilder.setDirection(oboe::Direction::Input)
                 ->setSharingMode(inExclusive_ ? oboe::SharingMode::Exclusive : oboe::SharingMode::Shared)
                 ->setPerformanceMode(inLowLatency_ ? oboe::PerformanceMode::LowLatency : oboe::PerformanceMode::None)
-                ->setSampleRate(workingSampleRate_)
-                ->setChannelCount(workingChannelCount_)
+                ->setSampleRate(inSampleRate_)
+                ->setChannelCount(inChannelCount_)
                 ->setFormat(inFormatFloat_ ? oboe::AudioFormat::Float : oboe::AudioFormat::I16)
                 ->setCallback(recCb_.get());
         oboe::AudioStream* inRaw = nullptr;
@@ -365,8 +360,8 @@ public:
                 LOGI("Input buffer optimized: %d -> %d frames (%.2f ms -> %.2f ms)",
                      inInitialBufferSize,
                      inBufResult.value(),
-                     inInitialBufferSize * 1000.0 / workingSampleRate_,
-                     inBufResult.value() * 1000.0 / workingSampleRate_);
+                     inInitialBufferSize * 1000.0 / inSampleRate_,
+                     inBufResult.value() * 1000.0 / inSampleRate_);
             } else {
                 // 如果2倍失败，尝试4倍（仍比默认值好）
                 inTargetBufferSize = inFramesPerBurst * 4;
@@ -374,11 +369,11 @@ public:
                 if (inBufResult2) {
                     LOGI("Input buffer set to 4x burst: %d frames (%.2f ms)",
                          inBufResult2.value(),
-                         inBufResult2.value() * 1000.0 / kSampleRate);
+                         inBufResult2.value() * 1000.0 / inSampleRate_);
                 } else {
                     LOGW("Failed to optimize input buffer, using default: %d frames (%.2f ms)",
                          inInitialBufferSize,
-                         inInitialBufferSize * 1000.0 / workingSampleRate_);
+                         inInitialBufferSize * 1000.0 / inSampleRate_);
                 }
             }
         }
@@ -430,8 +425,10 @@ public:
     }
     
     // 配置更新接口（供 JNI 调用）
-    void setWorkingSampleRate(int sr) { workingSampleRate_ = sr; }
-    void setWorkingChannelCount(int ch) { workingChannelCount_ = ch; }
+    void setOutSampleRate(int sr) { outSampleRate_ = sr; }
+    void setInSampleRate(int sr) { inSampleRate_ = sr; }
+    void setOutChannelCount(int ch) { outChannelCount_ = ch; }
+    void setInChannelCount(int ch) { inChannelCount_ = ch; }
     void setOutExclusive(bool v) { outExclusive_ = v; }
     void setOutLowLatency(bool v) { outLowLatency_ = v; }
     void setOutFormatFloat(bool v) { outFormatFloat_ = v; }
@@ -478,8 +475,8 @@ private:
         }
         
         // 计算预热所需的静音数据量（在有效PCM数据之前填充）
-        const int sr = workingSampleRate_ > 0 ? workingSampleRate_ : kSampleRate;
-        const int ch = workingChannelCount_ > 0 ? workingChannelCount_ : kChannelCount;
+        const int sr = outSampleRate_ > 0 ? outSampleRate_ : kSampleRate;
+        const int ch = outChannelCount_ > 0 ? outChannelCount_ : kChannelCount;
         const size_t bytesPerSample = decodedIsFloat_ ? sizeof(float) : kBytesPerSample;
         size_t preheatSilenceBytes = static_cast<size_t>(sr) * ch * bytesPerSample * kPreheatMs / 1000;
         size_t totalBufferSize = preheatSilenceBytes + readSize;
@@ -514,7 +511,7 @@ private:
     
     // 辅助函数：根据配置将多声道音频转换为单声道（兼容单声道和双声道输入）
     void channelsToMono(const int16_t* input, size_t inputSamples, int16_t* mono, size_t& outMonoSamples) {
-        const int ch = workingChannelCount_ > 0 ? workingChannelCount_ : kChannelCount;
+        const int ch = outChannelCount_ > 0 ? outChannelCount_ : kChannelCount;
         if (ch == 2) {
             // 双声道配置：每2个样本（L,R）合并为1个单声道样本（取平均值）
             if (inputSamples % 2 != 0) {
@@ -555,9 +552,8 @@ private:
         if (!fp) return;
         
         // 统一转换参数：48kHz / float / mono
-        const int targetSr = 48000;
         const int chunkMs = 20;
-        const size_t outFramesPerChunk = static_cast<size_t>(targetSr) * chunkMs / 1000;
+        const size_t outFramesPerChunk = static_cast<size_t>(kSampleRate) * chunkMs / 1000;
         //使用2倍大小的缓存，防止越界
         std::vector<float> leftMonoF(outFramesPerChunk * 2);
         std::vector<float> rightMonoF(outFramesPerChunk * 2);
@@ -650,15 +646,15 @@ private:
             return;
         }
         
-        // 自动编码合成的 PCM
-        int rc = -1;
-        if (!mergedPath.empty() && !outputM4aPath_.empty()) {
-            // 合成输出为 S16 交错 PCM；applyAutoGain 已转换为 int16 格式
-            rc = encode_pcm_to_m4a(mergedPath.c_str(), outputM4aPath_.c_str(), workingSampleRate_, 2, false);
-            LOGI("auto encode result=%d out=%s", rc, outputM4aPath_.c_str());
-        } else {
-            LOGE("auto encode skipped: path empty");
-        }
+            // 自动编码合成的 PCM
+            int rc = -1;
+            if (!mergedPath.empty() && !outputM4aPath_.empty()) {
+                // 合成输出为 S16 交错 PCM；applyAutoGain 已转换为 int16 格式
+                rc = encode_pcm_to_m4a(mergedPath.c_str(), outputM4aPath_.c_str(), kSampleRate, 2, false);
+                LOGI("auto encode result=%d out=%s", rc, outputM4aPath_.c_str());
+            } else {
+                LOGE("auto encode skipped: path empty");
+            }
         
         // 回调 Java 通知完成（只有在没有错误时才通知）
         if (!errorOccurred_.load()) {
@@ -679,7 +675,7 @@ private:
         double& outCorrelation) {
         
         // 搜索范围：0到500ms（约24000样本@48kHz）
-        const size_t maxDelaySamples = static_cast<size_t>(workingSampleRate_ * 0.5);  // 500ms
+        const size_t maxDelaySamples = static_cast<size_t>(kSampleRate * 0.5);  // 500ms
         const size_t searchEnd = std::min(maxDelaySamples, totalFrames - windowStart - windowSize);
         
         if (searchEnd < 100 || windowSize < 1000) {
@@ -778,9 +774,9 @@ private:
         if (totalFrames <= startOffset + windowSize) return candidates;
 
         // 参数：短时窗30ms，扫描步长10ms，命中后跳过700ms
-        const size_t energyWindow = static_cast<size_t>(workingSampleRate_ * 0.03);   // 30ms
-        const size_t energyStep   = static_cast<size_t>(workingSampleRate_ * 0.01);   // 10ms
-        const size_t skipGap      = static_cast<size_t>(workingSampleRate_ * 0.70);   // 命中后跳过700ms
+        const size_t energyWindow = static_cast<size_t>(kSampleRate * 0.03);   // 30ms
+        const size_t energyStep   = static_cast<size_t>(kSampleRate * 0.01);   // 10ms
+        const size_t skipGap      = static_cast<size_t>(kSampleRate * 0.70);   // 命中后跳过700ms
 
         if (energyWindow == 0 || energyStep == 0) return candidates;
 
@@ -819,8 +815,8 @@ private:
     // float 版本的 detectDelay 函数
     double detectDelay(const std::vector<float>& left, const std::vector<float>& right, size_t totalFrames) {
         // 参数配置
-        const size_t windowSize = static_cast<size_t>(workingSampleRate_ * 0.7);  // 700ms秒窗口
-        const size_t startOffset = static_cast<size_t>(workingSampleRate_ * 0.1); // 从0.1秒开始，避开预热期
+        const size_t windowSize = static_cast<size_t>(kSampleRate * 0.7);  // 700ms秒窗口
+        const size_t startOffset = static_cast<size_t>(kSampleRate * 0.1); // 从0.1秒开始，避开预热期
 
         // 初始化前3个窗口信息
         for (int i = 0; i < 3; ++i) {
@@ -862,8 +858,8 @@ private:
             if (detectDelayInWindow(left, right, windowStart, windowSize, totalFrames, delaySamples, correlation)) {
                 allResults.push_back({delaySamples, correlation});
                 LOGI("detectDelay: Candidate %zu (start=%.2fs): delay=%zu samples (%.2f ms), correlation=%.4f",
-                     windowCount, windowStart * 1000.0 / workingSampleRate_,
-                     delaySamples, delaySamples * 1000.0 / workingSampleRate_, correlation);
+                     windowCount, windowStart * 1000.0 / kSampleRate,
+                     delaySamples, delaySamples * 1000.0 / kSampleRate, correlation);
                 if (correlation > earlyStopThreshold) {
                     highCorrelationCount++;
                     if (highCorrelationCount >= earlyStopCount) {
@@ -878,7 +874,7 @@ private:
         // 如果未获取足够的结果，回退到原先的均匀滑窗策略
         if (allResults.size() < 3) {
             LOGW("detectDelay: Not enough results, using uniform sliding window strategy");
-            const size_t windowStep = static_cast<size_t>(workingSampleRate_ * 0.5);   // 50%重叠，0.5秒步进
+            const size_t windowStep = static_cast<size_t>(kSampleRate * 0.5);   // 50%重叠，0.5秒步进
             for (size_t windowStart = startOffset; windowStart + windowSize <= totalFrames; windowStart += windowStep) {
                 size_t delaySamples = 0; double correlation = 0.0;
                 if (detectDelayInWindow(left, right, windowStart, windowSize, totalFrames, delaySamples, correlation)) {
@@ -905,7 +901,7 @@ private:
         
         // 存储前3个窗口的详细信息（用于UI显示）
         for (size_t i = 0; i < 3 && i < selectedResults.size(); ++i) {
-            top3Delays_[i] = selectedResults[i].delaySamples * 1000.0 / workingSampleRate_;  // 转换为毫秒
+            top3Delays_[i] = selectedResults[i].delaySamples * 1000.0 / kSampleRate;  // 转换为毫秒
             top3Correlations_[i] = selectedResults[i].correlation;
             LOGI("detectDelay: Top window #%zu: delay=%.2f ms, correlation=%.4f",
                  i + 1, top3Delays_[i], top3Correlations_[i]);
@@ -929,7 +925,7 @@ private:
         }
         
         size_t averageDelaySamples = static_cast<size_t>(weightedDelaySum / totalWeight + 0.5);
-        double delayMs = averageDelaySamples * 1000.0 / workingSampleRate_;
+        double delayMs = averageDelaySamples * 1000.0 / kSampleRate;
         
         // 计算标准差，验证一致性
         double variance = 0.0;
@@ -939,7 +935,7 @@ private:
             variance += weight * diff * diff;
         }
         double stdDevSamples = std::sqrt(variance / totalWeight);
-        double stdDevMs = stdDevSamples * 1000.0 / workingSampleRate_;
+        double stdDevMs = stdDevSamples * 1000.0 / kSampleRate;
         
         // 计算平均相关度
         double avgCorrelation = 0.0;
@@ -1301,8 +1297,11 @@ private:
     std::atomic<size_t> pcmPosition_{0};  // 当前播放位置（字节偏移）
     std::unique_ptr<PlayCallback> playCb_; // 播放回调
     std::unique_ptr<RecCallback> recCb_;   // 录音回调
-    int workingSampleRate_{kSampleRate};
-    int workingChannelCount_{kChannelCount};
+    // 独立配置参数
+    int outSampleRate_{kSampleRate};      // 输出流采样率
+    int inSampleRate_{kSampleRate};       // 输入流采样率
+    int outChannelCount_{kChannelCount};  // 输出流声道数
+    int inChannelCount_{kChannelCount};   // 输入流声道数
     bool outExclusive_{true};
     bool outLowLatency_{true};
     bool outFormatFloat_{false};
@@ -1380,19 +1379,21 @@ Java_me_rjy_oboe_record_demo_LatencyTesterActivity_startLatencyTest(
     const char* cacheDir = env->GetStringUTFChars(jCacheDir, nullptr);
     const char* outPath = env->GetStringUTFChars(jOutputM4a, nullptr);
     
-    // 应用配置（为了合并和检测的一致性，使用统一的工作采样率/声道）
-    tester->setWorkingSampleRate(static_cast<int>(outSampleRate));
-    tester->setWorkingChannelCount(static_cast<int>(outChannels));
+    // 应用独立配置参数
+    // 输出流配置
+    tester->setOutSampleRate(static_cast<int>(outSampleRate));
+    tester->setOutChannelCount(static_cast<int>(outChannels));
     tester->setOutExclusive(outExclusive == JNI_TRUE);
     tester->setOutLowLatency(outLowLatency == JNI_TRUE);
     tester->setOutFormatFloat(outFormatFloat == JNI_TRUE);
+    
+    // 输入流配置
+    tester->setInSampleRate(static_cast<int>(inSampleRate));
+    tester->setInChannelCount(static_cast<int>(inChannels));
     tester->setInExclusive(inExclusive == JNI_TRUE);
     tester->setInLowLatency(inLowLatency == JNI_TRUE);
     tester->setInFormatFloat(inFormatFloat == JNI_TRUE);
-
-    // 忽略输入端采样率/声道参数，强制与工作参数保持一致，避免合并时采样率/通道不一致
-    (void)inSampleRate; (void)inChannels;
-
+    
     int result = tester->start(env, std::string(inPath), std::string(cacheDir), std::string(outPath));
     
     env->ReleaseStringUTFChars(jInputPath, inPath);
